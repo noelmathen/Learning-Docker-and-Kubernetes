@@ -1,0 +1,14 @@
+FROM ubuntu:latest
+
+LABEL version="1.0"
+LABEL description="This is a sample Dockerfile for building a simple Ubuntu-based image."
+LABEL maintainer="noelmathen03@gmail.com"
+
+RUN apt-get update && \
+    apt-get upgarade -y
+
+RUN apt-get install nginx -y
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

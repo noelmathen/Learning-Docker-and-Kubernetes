@@ -1,4 +1,3 @@
-
 ###### To check docker setup
 
 `sudo docker run hello-world`
@@ -67,8 +66,6 @@ docker exec -it custom_mysql mysql -uroot -p
 
 exit
 
-
-
 # Docker Networking
 
 ### Introduction
@@ -85,7 +82,6 @@ docker exec -it nig2 /bin/bash(this will go into container of nig2)
 
 ping 172.17.0.3(ping nig3 from nig2. this is how we can communicate under defauilt bridge network, ie, through ip addresses)
 
-
 ### Docker container Networks
 
 docker run -p <host_port>:<container_port> .......
@@ -95,7 +91,6 @@ docker port <container_name>
 docker inspect <container_name>
 
 docker inspect nig2 -f {{.NetworkSettings.IPAddress}}
-
 
 ### CLI Operations
 
@@ -109,7 +104,6 @@ docker network prune
 
 docker netword stop <contianer_name>
 
-
 ### DNS Concept
 
 docker network create dns_bridge
@@ -120,6 +114,98 @@ docker run -p 8090:80 -d --name alpine_container_2 --network dns_bridge nginx:al
 
 docker exec -it alpine_container ping alpine_container_2
 
+# Docker Container Images: Beginning
+
+### Concept of Docker Image Layers
+
+docker images
+
+docker pull mysql:8.0
+
+docker history <image_name>(will show layers of image)
+
+### Concept Image Tagging
+
+docekr tag nginx:latest nginx_noel:1.0.0 (change tag of an image, by creating a seperate image)
+
+# Docker Container Images_Build Container Images
+
+### Docker file format
+
+FROM <image_name>:<image_tag>
+
+LABEL `<key>="<value>`"
+
+RUN `<commands>`
+
+CMD ["executable", "param1 ", "param2"]
+
+EXPOSE `<port>`
+
+ENV (set environment variables)
+
+ADD (adds/copies files)
+
+COPY (only copies)
+
+VOUME (expose database storage areas)
+
+WORKDIR (set the pwd)
 
 
-#
+### Creating custom docker image
+
+1. create "dockerfile" in vs code
+2. 
+
+FROMubuntu:latest
+
+LABELversion="1.0"
+
+LABELdescription="ThisisasampleDockerfileforbuildingasimpleUbuntu-basedimage."
+
+LABELmaintainer="noelmathen03@gmail.com"
+
+RUNapt-getupdate&&\
+
+    apt-getupgarade-y
+
+RUNapt-getinstallnginx-y
+
+EXPOSE80
+
+CMD["nginx","-g","daemonoff;"]
+
+3. mkdir customimages
+4. vi dockerfile
+5. press i
+6. paste the dockerfile code from vscode to cloud
+7. press esc
+8. type :wq
+9. docker build -t noelmathen/nginx_latest:1.0
+10. docker images
+
+
+### Extending docker official image
+
+1. mkdir extendedImage
+2. vi extendedImage/dockerfile
+3. cd extendedImage/
+4. create dockerfile:
+
+FROMnginx:latest
+
+LABELversion="1.0"
+
+LABELdescription="ThisisasampleDockerfileforbuildingasimpleNginx-basedimage."
+
+WORKDIR/usr/share/nginx/html
+
+COPYindex.htmlindex.html
+
+    
+
+5. create index.html
+   1. `<h1>` Extended docker image `</h1>`
+6. docker build -t noelmathen/nginx_extended:1.0 .
+7. docker run -it -d -p 8081:80 --name nginx_extended noelmathen/nginx_extended:1.0
