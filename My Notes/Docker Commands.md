@@ -209,3 +209,32 @@ COPYindex.htmlindex.html
    1. `<h1>` Extended docker image `</h1>`
 6. docker build -t noelmathen/nginx_extended:1.0 .
 7. docker run -it -d -p 8081:80 --name nginx_extended noelmathen/nginx_extended:1.0
+
+
+
+# Handle Persistent Data in Docker Containers
+
+
+docker pull mysql:8.2
+
+docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true --name mysql mysql:8.2
+
+cd /var/lib/docker/volumes/a7965947970ef7a6716ccbe2f6ac338384b84b1a70132a3406958e9e14c95e70/_data (data in host machine)
+
+docker exec -it mysql \bin\bash
+
+cd var/lib/mysql (data in container)
+
+Note: now even if the container is deleted, the data in the host machinte is nto deleted, thus data is persistent. 
+
+docker volume ls
+
+docker volume prune -a
+
+docker volume create `<name>`
+
+docker volume prune `<name>`
+
+docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true --mount source=mysql_db,target=/var/lib/mysql  --name mysql2 mysql:8.2(new container is created but uses the same volume of mysql itself)
+
+docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true -v mysql_db:/var/lib/mysql  --name mysql3 mysql:8.2 (another way to run with volumes using -v shortcut)
