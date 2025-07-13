@@ -152,7 +152,6 @@ VOUME (expose database storage areas)
 
 WORKDIR (set the pwd)
 
-
 ### Creating custom docker image
 
 1. create "dockerfile" in vs code
@@ -185,7 +184,6 @@ CMD["nginx","-g","daemonoff;"]
 9. docker build -t noelmathen/nginx_latest:1.0
 10. docker images
 
-
 ### Extending docker official image
 
 1. mkdir extendedImage
@@ -203,17 +201,14 @@ WORKDIR/usr/share/nginx/html
 
 COPYindex.htmlindex.html
 
-    
-
 5. create index.html
    1. `<h1>` Extended docker image `</h1>`
 6. docker build -t noelmathen/nginx_extended:1.0 .
 7. docker run -it -d -p 8081:80 --name nginx_extended noelmathen/nginx_extended:1.0
 
-
-
 # Handle Persistent Data in Docker Containers
 
+### Handle with data Volumes
 
 docker pull mysql:8.2
 
@@ -225,7 +220,7 @@ docker exec -it mysql \bin\bash
 
 cd var/lib/mysql (data in container)
 
-Note: now even if the container is deleted, the data in the host machinte is nto deleted, thus data is persistent. 
+Note: now even if the container is deleted, the data in the host machinte is nto deleted, thus data is persistent.
 
 docker volume ls
 
@@ -238,3 +233,16 @@ docker volume prune `<name>`
 docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true --mount source=mysql_db,target=/var/lib/mysql  --name mysql2 mysql:8.2(new container is created but uses the same volume of mysql itself)
 
 docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true -v mysql_db:/var/lib/mysql  --name mysql3 mysql:8.2 (another way to run with volumes using -v shortcut)
+
+
+### Handle with data binds
+
+bind mounts can be stored anywhere.
+
+mkdir testbind
+
+docker run -d --mount type=bind,source=/root/testbind,target=/apps -p 8080:80 --name nginx1 nginx:latest
+
+open new terminal, then => docker exec -it nginx1 /bin/bash => cd apps => ls
+
+you can see that the testbind directory made in the host machine is now visible in the container also, in real time, wihtout any redeployment or anything. In the volume bind case, this won't work. If we try to change the volume mounts within the container when more than 1 containers are using the same volume, then it will automatically terminate containers randomly.
