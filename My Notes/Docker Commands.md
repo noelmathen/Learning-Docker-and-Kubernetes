@@ -234,7 +234,6 @@ docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true --mount source=mysql_db,target=
 
 docker run -d -e MYSQL_ALLOW_EMPTY_PASSWORD=true -v mysql_db:/var/lib/mysql  --name mysql3 mysql:8.2 (another way to run with volumes using -v shortcut)
 
-
 ### Handle with data binds
 
 bind mounts can be stored anywhere.
@@ -246,3 +245,81 @@ docker run -d --mount type=bind,source=/root/testbind,target=/apps -p 8080:80 --
 open new terminal, then => docker exec -it nginx1 /bin/bash => cd apps => ls
 
 you can see that the testbind directory made in the host machine is now visible in the container also, in real time, wihtout any redeployment or anything. In the volume bind case, this won't work. If we try to change the volume mounts within the container when more than 1 containers are using the same volume, then it will automatically terminate containers randomly.
+
+
+
+# Section 9 - Docker Compose -Multi Container Orchestration
+
+### Docker-compose YAML file structure example:
+
+version: "3.8"  # Defines the syntax version. Always start here.
+
+services:
+  web:
+    build:
+      context: ./web            # Folder where Dockerfile exists
+      dockerfile: Dockerfile.dev  # Optional: custom Dockerfile name
+      args:
+        build_var: "123"        # Build-time ARG (not ENV)
+    image: myapp_web:1.0         # Name the built image
+    container_name: webapp       # Optional name override
+    ports:
+      - "8080:80"               # Host:Container port mapping
+    environment:
+      - NODE_ENV=development
+      - API_URL=http://api:5000
+    env_file:
+      - .env                    # Load env vars from file
+    volumes:
+      - ./html:/usr/share/nginx/html      # Bind mount
+      - app-logs:/var/log/nginx            # Named volume
+    depends_on:
+      - db                      # Wait for db to be created before starting
+    restart: always             # Auto-restart on failure or reboot
+    command: ["nginx", "-g", "daemon off;"]  # Override CMD in Dockerfile
+    entrypoint: ["sh", "-c"]    # Override ENTRYPOINT
+    working_dir: /app           # Set working directory inside container
+    extra_hosts:
+      - "host.docker.internal:host-gateway"  # For host<->container access
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost"] # Health command
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    networks:
+      - app-network
+
+  db:
+    image: mysql:5.7
+    container_name: mysql-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root123
+      MYSQL_DATABASE: appdb
+    ports:
+      - "3306:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    networks:
+      - app-network
+
+  adminer:
+    image: adminer
+    ports:
+      - "8081:8080"
+    depends_on:
+      - db
+    networks:
+      - app-network
+
+volumes:
+  db-data:           # Named volume for DB
+  app-logs:          # Named volume for NGINX logs
+
+networks:
+  app-network:       # Custom bridge network
