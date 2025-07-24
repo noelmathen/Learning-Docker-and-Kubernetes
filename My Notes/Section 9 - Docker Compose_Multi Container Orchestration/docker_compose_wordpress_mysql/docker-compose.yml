@@ -7,10 +7,10 @@ services:
     container_name: mysql-container
     restart: always
     environment:
-      MYSQL_ROOT_PASSWORD: mypassword
+      MYSQL_ROOT_PASSWORD: 123
       MYSQL_DATABASE: wordpress
       MYSQL_USER: wordpressuser
-      MYSQL_PASSWORD: wordpress
+      MYSQL_PASSWORD: 123
     volumes:
       - mysql_data:/var/lib/mysql
     networks:
@@ -28,7 +28,7 @@ services:
     environment:
       WORDPRESS_DB_HOST: db:3306
       WORDPRESS_DB_USER: wordpressuser
-      WORDPRESS_DB_PASSWORD: wordpress
+      WORDPRESS_DB_PASSWORD: 123
     volumes:
       - wordpress_data:/var/www/html
     ports:

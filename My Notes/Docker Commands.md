@@ -246,8 +246,6 @@ open new terminal, then => docker exec -it nginx1 /bin/bash => cd apps => ls
 
 you can see that the testbind directory made in the host machine is now visible in the container also, in real time, wihtout any redeployment or anything. In the volume bind case, this won't work. If we try to change the volume mounts within the container when more than 1 containers are using the same volume, then it will automatically terminate containers randomly.
 
-
-
 # Section 9 - Docker Compose -Multi Container Orchestration
 
 ### Docker-compose YAML file structure example:
@@ -323,3 +321,29 @@ volumes:
 
 networks:
   app-network:       # Custom bridge network
+
+### Docker compose commands
+
+docker compose version
+
+git clone https://github.com/anshulc55/Docker_for_DevOps.git
+
+cd Docker_for_DevOps/docker_compose_build_image/
+
+docker compose build
+
+docker compose up
+
+docker compose up -d (run in background)
+
+docker compose -f Custom-Application.yml up -d (use custom yaml file)
+
+docker compose down
+
+docker compose ls
+
+docker compose push
+
+docker compose logs
+
+docker compose -f Custom-Application.yml logs <service_name>
