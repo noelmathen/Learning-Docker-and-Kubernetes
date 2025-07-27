@@ -347,3 +347,78 @@ docker compose push
 docker compose logs
 
 docker compose -f Custom-Application.yml logs <service_name>
+
+docker compose logs --tail=10
+
+docker compose exec <service_name> `<shell>`
+
+
+
+
+# Section 10 - Docker Swarm Introduction_Swarm Orchestration
+
+### Introduction
+
+* Master and Worker Nodes
+* Based on Raft Algorithm
+* Orchestration
+
+
+### Initialisation and Commands
+
+docker info
+
+docker swarm init --advertise-addr 206.189.179.106
+
+docker swarm --help
+
+docker service --help
+
+
+### Creating Service on Docker Swarm
+
+docker service create alpine ping www.google.com
+
+docker service ls
+
+docker service ps wtpra6ei8n7v
+
+docker service inspect wtpra6ei8n7v
+
+docker service update wtpra6ei8n7v --replicas 5
+
+docker container ls
+
+docker container rm -f 1b0345c (even if we kill one out of the 5 containers, it will automatically create another one)
+
+docker service rollback wtpra6ei8n7v
+
+### Creating Docker Swarm Cluster
+
+* One main terminal where docker swarm is installed.
+* Created another two seperate droplets/terminals(in digitaocean cloud)
+
+docker node --help
+
+docker node ls
+
+docker swarm join-token manager(Do this on the manager machine)
+
+docker swarm join --token SWMTKN-1-14xyysipzdpo6ycp7wff52v0htf2xv3tq8f33dhcs6j1p7x1g1-afxfenr32cf5156xnrc7xbh7x 206.189.179.106:2377(You will get this command. paste this in the worker 1 droplet)
+
+docker swarm join-token worker(and copy paste the token command in docker-02 machine, then it will join as worker)
+
+docker node promote docker-02(doing this from docker-02 itself will give error, coz it cannot promote itself. Doing it from docker-01 will work)
+
+docker node demote docker-01(we can do this from docker-02, coz it was already promoted to manager node)
+
+docker service create --replicas 10 ping www.google.com
+
+docker service create --replicas 10 alpine ping www.google.com
+
+
+### Visualizing Cluster State using Docker Swarm Visualizer
+
+docker stack deploy -c docker-compose.yml visualizer
+
+docker stack ls
