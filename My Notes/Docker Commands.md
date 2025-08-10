@@ -352,9 +352,6 @@ docker compose logs --tail=10
 
 docker compose exec <service_name> `<shell>`
 
-
-
-
 # Section 10 - Docker Swarm Introduction_Swarm Orchestration
 
 ### Introduction
@@ -362,7 +359,6 @@ docker compose exec <service_name> `<shell>`
 * Master and Worker Nodes
 * Based on Raft Algorithm
 * Orchestration
-
 
 ### Initialisation and Commands
 
@@ -373,7 +369,6 @@ docker swarm init --advertise-addr 206.189.179.106
 docker swarm --help
 
 docker service --help
-
 
 ### Creating Service on Docker Swarm
 
@@ -416,9 +411,79 @@ docker service create --replicas 10 ping www.google.com
 
 docker service create --replicas 10 alpine ping www.google.com
 
-
 ### Visualizing Cluster State using Docker Swarm Visualizer
 
 docker stack deploy -c docker-compose.yml visualizer
 
 docker stack ls
+
+# Section 11 - Docker Swarm Features and Applications
+
+### Networks in Docker Swarm
+
+Default network - Ingress
+
+User can also define networks
+
+Bridge network (docker _gwbridge) - connects individual nodes in the swarm to each other
+
+### Working Example
+
+* Create 3 manager and 2 worker in play with docker site
+
+[manager1]
+
+docker network ls
+
+docker network create -d overlay my_network
+
+docker service create --name postgres -e POSTGRES_PASSWORD=123 --network my_network postgres
+
+docker service create --name drupal --network my_network -p 8080:80 drupal
+
+docker service ps postgress
+
+docker service ps drupal
+
+### Assignment
+
+$ git clone https://github.com/dockersamples/example-voting-app.git~
+
+$ cd example-voting-app/
+
+$ docker network create -d overlay frontend
+
+$ docker network create -d overlay backend
+
+$ docker network ls
+
+$ docker service create --name voting_app -p 5000:80 --replicas 4 --network frontend dockersamples/examplevotingapp_vote
+
+$ docker service create --name redis --replicas 4 --network frontend redis:alpine
+
+$ docker service create --name worker --replicas 4 --network frontend --network backend dockersamples/examplevotingapp_worker
+
+$ docker volume create myvolume
+
+$ docker service create --name postgres -e POSTGRES_PASSWORD=123 --network backend --mount type=volume,source=myvolume,destination=/var/lib/postgresql/data postgres:15-alpine
+
+$ docker service create --name result -p 5001:80 --replicas 1 --network backend dockersamples/examplevotingapp_result
+
+# Section 12 - Docker Swarm Stack Deployment_Multi Service Deployment
+
+### Introduction
+
+docker stack deploy -c docker-compose.yml web_app
+
+docker stack ls
+
+docker stack ps web_app
+
+* **Vertical Scaling** - Increasing instances/replicas (After editing/increasing the number of replicas in the YAML file, execute the same command used to deploy stack. It will be updated automatically)
+
+* **Horizontal Scaling** - increasing resources (When this is done, the current instances will be shutdown, and new ones will be created. But this will happen in a rolling fashion only. All of them together wont be shutdown, so as to keep tha application running.)
+
+
+docker stack deploy -c docker-stack.yml voting_app
+
+docker stack services voting_app
