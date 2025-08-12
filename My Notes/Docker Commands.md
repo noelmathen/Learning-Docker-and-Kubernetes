@@ -480,10 +480,40 @@ docker stack ls
 docker stack ps web_app
 
 * **Vertical Scaling** - Increasing instances/replicas (After editing/increasing the number of replicas in the YAML file, execute the same command used to deploy stack. It will be updated automatically)
-
 * **Horizontal Scaling** - increasing resources (When this is done, the current instances will be shutdown, and new ones will be created. But this will happen in a rolling fashion only. All of them together wont be shutdown, so as to keep tha application running.)
-
 
 docker stack deploy -c docker-stack.yml voting_app
 
 docker stack services voting_app
+
+docker stack rm mystack
+
+
+
+
+# Section 13 - Docker Swarm Secrets Management_Protect Sensitive Data
+
+mkdir SecretsExample
+
+cd SecretsExample
+
+vi pass.txt (create file with the password)
+
+docker secret create db_pass pass.txt (Method 1)
+
+echo "admin" | docker secret create db_admin - (Method 2 - Using CLI)
+
+docker secret inspect db_pass
+
+docker service create --name postgres --secret db_user --secret db_pass -e POSTGRES_PASSWORD_FILE=/run/secrets/db_pass -e POSTGRES_PASSWORD_FILE=/run/secrets/db_user postgres
+
+
+vi postgres_user.txt
+
+vi postgres_password.txt
+
+echo "123" | docker secret create my-secret -
+
+docker stack deploy -c docker-compose.yml postgres_os_db
+
+docker stack ps postgres_os_db
