@@ -1,3 +1,5 @@
+# Section 1-4 - Docker Basics and Introduction
+
 ###### To check docker setup
 
 `sudo docker run hello-world`
@@ -66,7 +68,7 @@ docker exec -it custom_mysql mysql -uroot -p
 
 exit
 
-# Docker Networking
+# 5. Docker Networking
 
 ### Introduction
 
@@ -114,7 +116,7 @@ docker run -p 8090:80 -d --name alpine_container_2 --network dns_bridge nginx:al
 
 docker exec -it alpine_container ping alpine_container_2
 
-# Docker Container Images: Beginning
+# 6. Docker Container Images: Beginning
 
 ### Concept of Docker Image Layers
 
@@ -128,7 +130,9 @@ docker history <image_name>(will show layers of image)
 
 docekr tag nginx:latest nginx_noel:1.0.0 (change tag of an image, by creating a seperate image)
 
-# Docker Container Images_Build Container Images
+
+
+# Section 7. Docker Container Images_Build Container Images
 
 ### Docker file format
 
@@ -206,7 +210,7 @@ COPYindex.htmlindex.html
 6. docker build -t noelmathen/nginx_extended:1.0 .
 7. docker run -it -d -p 8081:80 --name nginx_extended noelmathen/nginx_extended:1.0
 
-# Handle Persistent Data in Docker Containers
+# Section 8. Handle Persistent Data in Docker Containers
 
 ### Handle with data Volumes
 
@@ -489,6 +493,8 @@ docker stack services voting_app
 docker stack rm mystack
 
 # Section 13 - Docker Swarm Secrets Management_Protect Sensitive Data
+
+### Secret Management
 
 mkdir SecretsExample
 
