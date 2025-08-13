@@ -488,9 +488,6 @@ docker stack services voting_app
 
 docker stack rm mystack
 
-
-
-
 # Section 13 - Docker Swarm Secrets Management_Protect Sensitive Data
 
 mkdir SecretsExample
@@ -507,7 +504,6 @@ docker secret inspect db_pass
 
 docker service create --name postgres --secret db_user --secret db_pass -e POSTGRES_PASSWORD_FILE=/run/secrets/db_pass -e POSTGRES_PASSWORD_FILE=/run/secrets/db_user postgres
 
-
 vi postgres_user.txt
 
 vi postgres_password.txt
@@ -517,3 +513,69 @@ echo "123" | docker secret create my-secret -
 docker stack deploy -c docker-compose.yml postgres_os_db
 
 docker stack ps postgres_os_db
+
+# Section 14 - Docker Swarm Service Management
+
+### ZeroDowntime Service Upgrade
+
+docker service create --name web_server -p 8080:80 nginx:1.15.12
+
+docker service scale web_server=10 (Horizontal Scaling)
+
+docker service update --image nginx:latest web_sever (Change image)
+
+docker service update --publish-rm 8080 --publish-add 8090 web_server (Change Port)
+
+
+### HealthCheck in Docker Swarm
+
+* default health check time is 30 seconds.
+
+docker container run --name postgres1 -d postgres
+
+docker container exec -it postgres1 \bin\bash
+
+pg_isready -U postgres
+
+docker container run -d --name postgres2 --health-cmd="pg_isready -U postgres || exit 1" postgres (Performing helath check in container is not that good)
+
+docker service create --name postgres1 --health-cmd="pg_isready -U postgres || exit 1" postgres (Docker service will be running only until the first helath check is passed)
+
+
+### Container Placement in Docker Swarm
+
+* Serivice Constraints
+
+docker run -it -d -p 8080:80 -v /var/run/docker.sock:/var/run/docker.sock dockersamples/visualizer
+
+docker service create --name postgres_db --constraint node.role==manager postgres
+
+docker node update --label-add=region=east-1-d 19z6bef3yd8s4qzmd9xaegk5k (THis is basically adding a label to your node. After this, you can create a service a place on based on the label of the node. that is the concept)
+
+docker service create --name postgres --constraint node.labels.region==east-1-d postgres (Creating a new service based on label)
+
+docker service update --contraint-rm=node.labels.region==east-1-d --constraint-add==node.role=worker postgres (Updating the constraints)
+
+
+### Putting Constraints in docker stack
+
+docker-compose.yml:
+
+```version:
+version: '3.8'
+
+services:
+  mysqlDB:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: "123"
+      MYSQL_DATABASE: "mysqldb"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.region == east-1-d
+
+```
+
+docker stack deploy -c docker-compose.yml mysql1

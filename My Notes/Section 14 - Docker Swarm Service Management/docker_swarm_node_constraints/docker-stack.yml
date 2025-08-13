@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  mysqlDB:
+    image: mysql:latest
+    environment:
+      MYSQL_ROOT_PASSWORD: "123"
+      MYSQL_DATABASE: "mysqldb"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.region == east-1-d
