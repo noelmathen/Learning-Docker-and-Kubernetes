@@ -1,4 +1,3 @@
-
 # Section 1-4 - Docker Basics and Introduction
 
 ###### To check docker setup
@@ -667,3 +666,72 @@ services:
 ```bash
 docker stack deploy -c docker-compose.yml mysql1
 ```
+
+
+
+
+
+# Section 15 - Get Started with Kubernetes
+
+### Architecture Overview
+
+* Master - Slave
+* Kube-api-server (Handles requests as REST by master?)
+* Etcd - Backend of K8s
+* Kube Scheduler
+* Kube Control Manager(Manages automated processes)
+* Kubelet - K8s agent executed on worker nodes.
+* Pods - Contains 1 or more containers. Share same network, storage etc. But All the containers in the pod should be same configuration. cant be different.
+* Kube Proxy - Runs on each node to deal with individual host sub-netting and ensure that the services are available to external parties.
+
+
+### Installation
+
+wsl --version
+
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/trusted.gpg.d/kubernetes.gpg
+echo "deb https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /" | sudo tee /etc/apt/sources.list.d/kubernetes.list
+sudo apt-get update
+sudo apt-get install -y kubectl
+
+kubectl version --client
+
+curl -LO https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+sudo install minikube-linux-amd64 /usr/local/bin/minikube
+
+minikube start --driver=docker
+
+kubectl get nodes
+
+kubectl config view
+
+
+
+### Some Basic Commands
+
+kubectl create deployment hello-node --image=k8s.gcr.ic/echoserver:1.4
+
+kubectl get deployment
+
+kubectl get pods
+
+kubectl expose deployment hello-node --type=LoadBalancer --port=8080
+
+minikube service hello-node
+
+kubectl delete service hello-node
+
+kubectl delete deployment hello-node
+
+
+### Namespaces
+
+kubectl get pods --namespace kube-system
+
+kubectl get pods --all-namespaces
+
+kubectl create namespace levelup360
+
+kubectl get namespaces
