@@ -667,10 +667,6 @@ services:
 docker stack deploy -c docker-compose.yml mysql1
 ```
 
-
-
-
-
 # Section 15 - Get Started with Kubernetes
 
 ### Architecture Overview
@@ -683,7 +679,6 @@ docker stack deploy -c docker-compose.yml mysql1
 * Kubelet - K8s agent executed on worker nodes.
 * Pods - Contains 1 or more containers. Share same network, storage etc. But All the containers in the pod should be same configuration. cant be different.
 * Kube Proxy - Runs on each node to deal with individual host sub-netting and ensure that the services are available to external parties.
-
 
 ### Installation
 
@@ -707,8 +702,6 @@ kubectl get nodes
 
 kubectl config view
 
-
-
 ### Some Basic Commands
 
 kubectl create deployment hello-node --image=k8s.gcr.ic/echoserver:1.4
@@ -725,7 +718,6 @@ kubectl delete service hello-node
 
 kubectl delete deployment hello-node
 
-
 ### Namespaces
 
 kubectl get pods --namespace kube-system
@@ -735,3 +727,547 @@ kubectl get pods --all-namespaces
 kubectl create namespace levelup360
 
 kubectl get namespaces
+
+# Section 16 - Kubernetes Cluster Management
+
+### High Availability
+
+* Availablity of k8s cluster
+* Uses load balancer, multiple masters and workers
+* Stacked ETCD - each master nodes have their own etcd, and these etcds communicate with eo
+* External Etcd - the etcs are maintained outside, not inside the masters
+
+### K8s Management Tools
+
+* Kubectl
+  * Official CLI
+  * Or we can use REST API
+* Kubeadm
+  * Use to create k8s cluster
+* Minikube
+  * Help setup master and worker node in single machine
+* Helm
+  * K8s templte andpackage management
+  * Use k8s as reusable objects
+* Kompose
+  * Convert docker copmose files to k8sobjects
+  * Ship containers from compose to k8s
+* Kustomize
+  * Similar to helm
+
+### K8s HA Cluster Setup
+
+
+### Step 1: Prerequisites on ALL Three Nodes (`master`, `worker-1`, `worker-2`)
+
+You must run these exact commands on **all three** of your virtual machines. This ensures they all have the necessary container runtime and Kubernetes packages.
+
+#### 1. Prepare the System
+
+First, we'll update the package list and set up the necessary kernel modules and system settings for Kubernetes networking.
+
+**Bash**
+
+```
+# Update package lists
+sudo apt-get update
+
+# Configure required kernel modules
+cat <<EOF | sudo tee /etc/modules-load.d/k8s.conf
+overlay
+br_netfilter
+EOF
+
+sudo modprobe overlay
+sudo modprobe br_netfilter
+
+# Set up required sysctl params for networking
+cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+net.bridge.bridge-nf-call-ip6tables = 1
+net.bridge.bridge-nf-call-iptables = 1
+net.ipv4.ip_forward                 = 1
+EOF
+
+# Apply sysctl params without reboot
+sudo sysctl --system
+```
+
+#### 2. Install and Configure `containerd` Runtime
+
+Kubernetes needs a container runtime to manage containers. We'll use `containerd`.
+
+**Bash**
+
+```
+# Install containerd
+sudo apt-get install -y containerd
+
+# Create a default configuration file
+sudo mkdir -p /etc/containerd
+sudo containerd config default | sudo tee /etc/containerd/config.toml
+
+# IMPORTANT: Set the SystemdCgroup to true
+# This is required for kubelet to work correctly
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
+
+# Restart containerd to apply the new config
+sudo systemctl restart containerd
+
+# Verify that containerd is running
+sudo systemctl status containerd
+```
+
+*You should see an **active (running)** status.*
+
+#### 3. Disable Swap
+
+Kubernetes requires that you disable swap memory on all nodes.
+
+**Bash**
+
+```
+# Disable swap immediately
+sudo swapoff -a
+
+# Disable swap permanently in the fstab file
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+```
+
+#### 4. Install Kubernetes Packages (`kubelet`, `kubeadm`, `kubectl`)
+
+Now, we'll add the official Kubernetes package repository and install the tools.
+
+**Bash**
+
+```
+# Install dependencies
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+# Add Kubernetes official GPG key (using the new method)
+sudo mkdir -p -m 755 /etc/apt/keyrings
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# Add the Kubernetes repository
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Update package list and install Kubernetes tools
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+
+# Mark the packages to prevent accidental updates
+sudo apt-mark hold kubelet kubeadm kubectl
+```
+
+**Checkpoint:** At this point, all three of your nodes are ready. The next steps are specific to the master or worker nodes. ✅
+
+---
+
+### Step 2: Initialize the Control-Plane Node (Run ONLY on `master`)
+
+These commands initialize the cluster and should  **only be run on your `master` node** .
+
+#### 1. Initialize the Cluster
+
+This command bootstraps your Kubernetes cluster, sets up the control plane components, and specifies the IP range for your pods.
+
+**Bash**
+
+```
+# Use kubeadm to initialize the cluster
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+```
+
+After this command finishes, it will print a `kubeadm join` command at the end of its output. **Copy this entire command and save it somewhere safe.** You will need it to join your worker nodes to the cluster. It will look something like this:
+
+`kubeadm join <master-ip>:<port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>`
+
+#### 2. Configure `kubectl` Access
+
+To manage your cluster as a regular user, you need to set up the kubeconfig file.
+
+**Bash**
+
+```
+# Create the .kube directory in your home folder
+mkdir -p $HOME/.kube
+
+# Copy the admin config file to your .kube directory
+sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+
+# Change the ownership of the file to your user
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+You can now test access by running `kubectl get nodes`. The master node will show a `NotReady` status because a networking add-on has not been installed yet. This is expected.
+
+---
+
+### Step 3: Install a Pod Network Add-on (Run ONLY on `master`)
+
+Your pods need a way to communicate with each other across nodes. We'll install the Calico network add-on.
+
+**Bash**
+
+```
+# Apply the Calico CNI manifest
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
+```
+
+Wait for 2-3 minutes for all the Calico pods to start. You can check the status with:
+
+**Bash**
+
+```
+# Check the status of your nodes again
+kubectl get nodes
+```
+
+The master node's status should soon change from `NotReady` to  **`Ready`** . 👨‍💻
+
+---
+
+### Step 4: Join the Worker Nodes (Run on `worker-1` and `worker-2`)
+
+Now, it's time to add your worker nodes to the cluster.
+
+1. **Get the Join Command:** Find the `kubeadm join` command you saved earlier from the `kubeadm init` output. If you lost it, you can generate a new one by running this on the  **master node** :
+   **Bash**
+
+   ```
+   kubeadm token create --print-join-command
+   ```
+2. **Join the Nodes:** SSH into `worker-1`, paste the full `kubeadm join` command, and run it with `sudo`.
+   **Bash**
+
+   ```
+   # On worker-1
+   sudo kubeadm join <master-ip>:<port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+   ```
+3. Repeat the same step on `worker-2`.
+   **Bash**
+
+   ```
+   # On worker-2
+   sudo kubeadm join <master-ip>:<port> --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+   ```
+
+---
+
+### Step 5: Final Verification (Run on `master`)
+
+Return to your **master node** and check the status of all nodes in the cluster.
+
+**Bash**
+
+```
+# Get the status of all nodes with more details
+kubectl get nodes -o wide
+```
+
+You should now see all three nodes (`master`, `worker-1`, `worker-2`) listed with a **`Ready`** status.
+
+```
+NAME       STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE             KERNEL-VERSION      CONTAINER-RUNTIME
+master     Ready    control-plane   10m   v1.30.x   10.0.0.1       <none>        Ubuntu 22.04.3 LTS   5.15.0-78-generic   containerd://1.6.21
+worker-1   Ready    <none>          2m    v1.30.x   10.0.0.2       <none>        Ubuntu 22.04.3 LTS   5.15.0-78-generic   containerd://1.6.21
+worker-2   Ready    <none>          1m    v1.30.x   10.0.0.3       <none>        Ubuntu 22.04.3 LTS   5.15.0-78-generic   containerd://1.6.21
+```
+
+Congratulations! You have successfully set up a modern, multi-node Kubernetes cluster. ✨
+
+
+
+### Maintenance 
+
+* Node Draining - Here, basically an existing node can be drained. any pods running in it will be gracefully terminated, and will be reassigned to another node.
+* We can undrain it as well. When drained, it will not be scheduled for anmmy tasks
+
+
+mkdir node_draining
+
+cd node_draining
+
+vi pods.yaml
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: draining-node-test-pod
+  labels:
+    tier: frontend
+spec:
+  restartPolicy: OnFailure   
+  containers:
+    - name: nginx
+      image: nginx:latest
+      ports:
+        - containerPort: 80
+
+kubectly apply -f pods.yaml
+
+kubectl get pods -o wide
+
+
+vi deployment.yaml
+
+apiVersion: apps/v1
+
+kind: Deployment
+
+metadata:
+
+  name: draining-node-test-deployment
+
+  labels:
+
+    app: frontend
+
+spec:
+
+  replicas: 2
+
+  selector:
+
+    matchLabels:
+
+    app: frontend
+
+  template:
+
+    metadata:
+
+    labels:
+
+    app: frontend
+
+    spec:
+
+    containers:
+
+    - name: nginx
+
+    image: nginx:latest
+
+    ports:
+
+    - containerPort: 8080
+
+kubectly apply -f deplyment.yaml
+
+
+kubectl drain worker-2 --ignore-daemonsets --force
+
+kubectl get nodes
+
+kubectl get pods -o wide
+
+kubectl uncordon worker-2
+
+
+### Upgrading The K8s Cluster
+
+
+Of course. Upgrading a Kubernetes cluster is a critical operation, and doing it correctly is essential. The process you've outlined is generally correct in its flow, but we'll modernize it for your current **v1.30** cluster and incorporate best practices.
+
+This guide will walk you through upgrading your cluster from **v1.30.x** to the next minor version, **v1.31.y** (this is a hypothetical future version for demonstration, but the process is identical for any minor version upgrade).
+
+**Important Rule:** You can only upgrade one minor version at a time (e.g., 1.30 → 1.31). You cannot skip versions (e.g., 1.30 → 1.32).
+
+---
+
+### Part 1: Upgrade the Control-Plane Node (`master`)
+
+The control-plane **must** be upgraded first. This process will update `etcd`, the API server, and other critical components.
+
+#### 1. Check Current Status & Plan the Upgrade
+
+First, see the current version of all nodes to confirm your starting point.
+
+**Bash**
+
+```
+# Run this on the master node
+kubectl get nodes
+```
+
+You should see all nodes are on v1.30.x. Before any upgrade, it's highly recommended to **read the official release notes** for the target version (v1.31) to be aware of any deprecated APIs or breaking changes.
+
+#### 2. Update the Kubernetes Package Repository
+
+To get the new version's packages, you must update the repository source file on the node you're upgrading.
+
+**Bash**
+
+```
+# Run this on the master node
+# This command updates your repository from v1.30 to v1.31
+sudo sed -i 's/v1.30/v1.31/g' /etc/apt/sources.list.d/kubernetes.list
+
+# Update your local package index
+sudo apt-get update
+```
+
+#### 3. Upgrade `kubeadm`
+
+`kubeadm` is the tool that orchestrates the upgrade. It needs to be upgraded first.
+
+**Bash**
+
+```
+# Define the target version
+# NOTE: Use the latest patch release of v1.31 available. Check with `apt-cache madison kubeadm`.
+VERSION=1.31.1-00
+
+# Install the new version of kubeadm
+sudo apt-get install -y --allow-change-held-packages kubeadm=$VERSION
+
+# Verify the new version
+kubeadm version
+```
+
+#### 4. Drain the Master Node
+
+Draining the node safely evicts all your application pods, moving them to other available nodes. This ensures zero downtime for your apps.
+
+**Bash**
+
+```
+# Replace <master-node-name> with the actual name of your master node
+kubectl drain <master-node-name> --ignore-daemonsets
+```
+
+* **`--ignore-daemonsets`** is needed because DaemonSet pods run on every node and cannot be evicted.
+
+#### 5. Perform the Control-Plane Upgrade
+
+Now, use `kubeadm` to perform the actual upgrade.
+
+**Bash**
+
+```
+# First, see the plan. This is a safe check.
+sudo kubeadm upgrade plan
+
+# Then, apply the upgrade. This will back up etcd and upgrade the static pods.
+sudo kubeadm upgrade apply v1.31.1
+```
+
+Follow any instructions the command outputs. It may ask you to upgrade other components if needed.
+
+#### 6. Upgrade `kubelet` and `kubectl`
+
+Once the control-plane components are upgraded, you can upgrade the `kubelet` (the node agent) and `kubectl` (the CLI tool).
+
+**Bash**
+
+```
+# Install the new versions
+sudo apt-get install -y --allow-change-held-packages kubelet=$VERSION kubectl=$VERSION
+
+# Reload the systemd config and restart kubelet
+sudo systemctl daemon-reload
+sudo systemctl restart kubelet
+```
+
+#### 7. Uncordon the Master Node
+
+"Uncordoning" makes the node available again for scheduling new pods.
+
+**Bash**
+
+```
+# Make the node schedulable again
+kubectl uncordon <master-node-name>
+```
+
+#### 8. Verify the Upgrade ✅
+
+Check the nodes again. Your master node should now report the new version (v1.31.1) and be in a `Ready` state.
+
+**Bash**
+
+```
+kubectl get nodes
+```
+
+---
+
+### Part 2: Upgrade the Worker Nodes (`worker-1` & `worker-2`)
+
+Now, upgrade each worker node, one at a time. The process is similar but slightly different.
+
+#### **On `worker-1`:**
+
+1. **Update the Package Repository (on the worker):** SSH into `worker-1` and update its repository to point to v1.31.
+   **Bash**
+
+   ```
+   # Run this on worker-1
+   sudo sed -i 's/v1.30/v1.31/g' /etc/apt/sources.list.d/kubernetes.list
+   sudo apt-get update
+   ```
+2. **Drain the Worker Node (from the master):** Go back to your **master node's** terminal to drain the worker.
+   **Bash**
+
+   ```
+   # Run this on the master node
+   kubectl drain <worker-1-name> --ignore-daemonsets
+   ```
+3. **Upgrade `kubeadm` (on the worker):** Go back to the `worker-1` terminal.
+   **Bash**
+
+   ```
+   # Run this on worker-1
+   VERSION=1.31.1-00
+   sudo apt-get install -y --allow-change-held-packages kubeadm=$VERSION
+   ```
+4. **Upgrade the Kubelet Config (on the worker):** For worker nodes, you run `kubeadm upgrade node`.
+   **Bash**
+
+   ```
+   # Run this on worker-1
+   sudo kubeadm upgrade node
+   ```
+5. **Upgrade `kubelet` (on the worker):**
+   **Bash**
+
+   ```
+   # Run this on worker-1
+   sudo apt-get install -y --allow-change-held-packages kubelet=$VERSION
+   sudo systemctl daemon-reload
+   sudo systemctl restart kubelet
+   ```
+6. **Uncordon the Worker Node (from the master):** Return to the **master** terminal.
+   **Bash**
+
+   ```
+   # Run this on the master node
+   kubectl uncordon <worker-1-name>
+   ```
+
+#### **Repeat for `worker-2`:**
+
+Follow the exact same steps (1-6) for your second worker node, `worker-2`, replacing the node name where appropriate.
+
+---
+
+### Final Verification 🚀
+
+Once all nodes are upgraded, run this command on your master node one last time:
+
+**Bash**
+
+```
+kubectl get nodes -o wide
+```
+
+All three of your nodes should now be **`Ready`** and report being on the new version,  **v1.31.1** . Your cluster upgrade is complete!
+
+
+
+
+
+
+
+
+# Section 17 - Kubernetes Object Management
