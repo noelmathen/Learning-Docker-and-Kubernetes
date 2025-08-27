@@ -757,7 +757,6 @@ kubectl get namespaces
 
 ### K8s HA Cluster Setup
 
-
 ### Step 1: Prerequisites on ALL Three Nodes (`master`, `worker-1`, `worker-2`)
 
 You must run these exact commands on **all three** of your virtual machines. This ensures they all have the necessary container runtime and Kubernetes packages.
@@ -975,13 +974,10 @@ worker-2   Ready    <none>          1m    v1.30.x   10.0.0.3       <none>       
 
 Congratulations! You have successfully set up a modern, multi-node Kubernetes cluster. ✨
 
-
-
-### Maintenance 
+### Maintenance
 
 * Node Draining - Here, basically an existing node can be drained. any pods running in it will be gracefully terminated, and will be reassigned to another node.
 * We can undrain it as well. When drained, it will not be scheduled for anmmy tasks
-
 
 mkdir node_draining
 
@@ -996,7 +992,7 @@ metadata:
   labels:
     tier: frontend
 spec:
-  restartPolicy: OnFailure   
+  restartPolicy: OnFailure
   containers:
     - name: nginx
       image: nginx:latest
@@ -1006,7 +1002,6 @@ spec:
 kubectly apply -f pods.yaml
 
 kubectl get pods -o wide
-
 
 vi deployment.yaml
 
@@ -1054,7 +1049,6 @@ spec:
 
 kubectly apply -f deplyment.yaml
 
-
 kubectl drain worker-2 --ignore-daemonsets --force
 
 kubectl get nodes
@@ -1063,9 +1057,7 @@ kubectl get pods -o wide
 
 kubectl uncordon worker-2
 
-
 ### Upgrading The K8s Cluster
-
 
 Of course. Upgrading a Kubernetes cluster is a critical operation, and doing it correctly is essential. The process you've outlined is generally correct in its flow, but we'll modernize it for your current **v1.30** cluster and incorporate best practices.
 
@@ -1263,11 +1255,88 @@ kubectl get nodes -o wide
 
 All three of your nodes should now be **`Ready`** and report being on the new version,  **v1.31.1** . Your cluster upgrade is complete!
 
-
-
-
-
-
-
-
 # Section 17 - Kubernetes Object Management
+
+### Working with Kubectl
+
+* Command line tool
+* Use k8s API internally
+* Kubectl get - Get objects in K8s cluster
+* Kubectl describe - Detailed information about object
+* Kubectl create - Create object
+* Kubectl apply - Similar to create - MOdify existing object is possible
+* Kubectl delete
+* Kubectl exec - Used to execute commands inside container. Resource shohuld be in running state
+
+mkdir object_management
+
+cd object_management/
+
+vi pod.yml
+
+kubectl create -f pod.yml
+
+kubectl get
+
+kubectl api-resources
+
+kubectl get po
+
+keubectl get pods -n kube-system
+
+kubectl get pods -n kube-system
+
+kubectl get pods
+
+kubectl get pods draining-node-test-pod
+
+kubectl get pods draining-node-test-pod -o wide
+
+kubectl get pods draining-node-test-pod -o json
+
+kubectl describe pods draining-node-test-pod
+
+kubectl exec draining-node-test-pod -c nginx -- cat /etc/nginx/nginx.conf
+
+kubectl delete po draining-node-test-pod
+
+kubectl get pods
+
+
+### Role Based Access Management in K8s
+
+* Admin can control the user access
+* "Roles" and "ClusterRoles" are k8s object which manages permissions
+* Roles - withing namespace
+* ClusterRoles - Across the entire cluster
+* "RoleBinding" - connects roles to user
+* "ClusterBinding" - ClusterRole mapping to user
+
+
+### Service Accounts in K8s Cluster
+
+* Used by container porcess to authenticate with K8s API
+* Can create service account using YAML file
+* Define role binding
+
+
+
+kubectl get serviceaccounts
+
+kubectl get serviceaccounts -n development
+
+vi my-serviceaccount.yml
+
+kubectl apply -f my-serviceaccount.yml
+
+kubectl get serviceaccounts -n development
+
+kubectl get roles -n development
+
+vi service-account-binding.yml
+
+kubectl apply -f service-account-binding.yml
+
+kubectl get serviceaccounts -n development
+
+kubectl get rolebinding -n development

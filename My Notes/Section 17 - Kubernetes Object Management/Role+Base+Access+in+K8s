@@ -10,8 +10,11 @@ $ sudo openssl req -new -key DevUser.key -out DevUser.csr -subj "/CN=DevUser/O=d
 **The common name (CN) of the subject will be used as username for authentication request. The organization field (O) will be used to indicate group membership of the user.
 
 3. Provide CA keys of Kubernetes cluster to generate the certificate
-sudo openssl x509 -req -in DevUser.csr -CA ${HOME}/.minikube/ca.crt -CAkey ${HOME}/.minikube/ca.key -CAcreateserial -out DevUser.crt -days 45
-
+sudo openssl x509 -req -in DevUser.csr \
+  -CA /etc/kubernetes/pki/ca.crt \
+  -CAkey /etc/kubernetes/pki/ca.key \
+  -CAcreateserial -out DevUser.crt -days 45
+  
 4. Get Kubernetes Cluster Config
 kubectl config view
 
