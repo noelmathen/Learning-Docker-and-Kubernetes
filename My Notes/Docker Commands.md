@@ -1302,7 +1302,6 @@ kubectl delete po draining-node-test-pod
 
 kubectl get pods
 
-
 ### Role Based Access Management in K8s
 
 * Admin can control the user access
@@ -1312,14 +1311,11 @@ kubectl get pods
 * "RoleBinding" - connects roles to user
 * "ClusterBinding" - ClusterRole mapping to user
 
-
 ### Service Accounts in K8s Cluster
 
 * Used by container porcess to authenticate with K8s API
 * Can create service account using YAML file
 * Define role binding
-
-
 
 kubectl get serviceaccounts
 
@@ -1340,3 +1336,299 @@ kubectl apply -f service-account-binding.yml
 kubectl get serviceaccounts -n development
 
 kubectl get rolebinding -n development
+
+# Section 18 - Pods and Containers in Kubernetes
+
+### Application Configuration
+
+* Kubernetes allows user to pass dynamic configuration values to application at Runtime.
+* ConfigMap
+
+  * Contains non sensitive data
+  * Passes to container application
+  * key-value format
+  * seperate configurations from pds and copmonents
+  * Flexible, prevents hardcoding into pods.
+* sECRETS
+
+  * Stores sensitive data
+  * For the characters, $, \, *, !, we need escaping
+* Environement Variables - Used to pass configmap and secrets to containers
+* Mount Volume - Same thing
+
+
+### Manage Applications using ENV Variables
+
+mkdir pods_and_containers && cd pods_and_containers
+
+vi example-configMap.yml
+
+
+apiVersion: v1
+
+kind: ConfigMap
+
+```
+metadata:
+
+  name: player-pro-demo
+
+data:
+
+  player_lives: "5"
+
+  properties_file_name: "user-interface.properties"
+
+  base.properties: |
+
+    enemy.types=aliens,monsters
+
+    player.maximum-lives=10
+
+  user-interface.properties: |
+
+    color.good=purple
+
+    color.bad=yellow
+
+    allow.textmode=true
+```
+
+kubectl apply -f example-configMap.yml
+
+kubectl get configmaps
+
+kubectl describe configmap player-pro-demo
+
+echo -n 'admin' | base64
+
+vi example-secrect.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-env-demo
+spec:
+  containers:
+    - name: configmap-demo
+      image: alpine
+      command: ["sleep", "3600"]
+      env:
+        # Define the environment variable
+        - name: PLAYER_LIVES
+          valueFrom:
+            configMapKeyRef:
+              name: player-pro-demo  # The ConfigMap this value comes from.
+              key: player_lives # The key to fetch.
+        - name: PROPERTIES_FILE_NAME
+          valueFrom:
+            configMapKeyRef:
+              name: player-pro-demo
+              key: properties_file_name
+        - name: SECRET_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: example-secret
+              key: username
+        - name: SECRET_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: example-secret
+              key: password
+```
+
+kubectl apply -f example-secrect.yml
+
+kubectl get secret
+
+kubectl describe secret example-secret
+
+vi configmap-env-demo.yml
+
+kubectl apply -f configmap-env-demo.yml
+
+kubectl get pods
+
+kubectl exec configmap-env-demo -it -- sh
+
+
+
+
+### Manage Applications using Mount Volumes
+
+vi configmap-vol-demo.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-vol-demo
+spec:
+  containers:
+    - name: configmap-vol-demo
+      image: alpine
+      command: ["sleep", "3600"]
+      volumeMounts:
+      - name: player-map
+        mountPath: /etc/config/configMap
+      - name: player-secret
+        mountPath: /etc/config/secret
+  volumes:
+    # You set volumes at the Pod level, then mount them into containers inside that Pod
+    - name: player-map
+      configMap:
+        # Provide the name of the ConfigMap you want to mount.
+        name: player-pro-demo
+    - name: player-secret
+      secret:
+        secretName: example-secret
+
+
+```
+
+kubectl apply -f configmap-vol-demo.yml
+
+kubectl exec configmap-vol-demo -it -- sh
+
+* Inside the container, You can view the location and file contents where the configmaps and secrets are mounted using the YAML file.
+
+
+### Manage Application Configuration Posix ConfigMap
+
+vi example-posix-configMap.yml
+
+```
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: player-posix-demo
+data:
+  PLAYER_LIVES: "5"
+  PROPERTIES_FILE_NAME: "user-interface.properties"
+  BASE_PROPERTIES: "Template1"
+  USER_INTERFACE_PROPERTIES: "Dark"
+```
+
+kubectl apply -f example-posix-configMap.yml
+
+kubectl get configmaps
+
+kubectl describe configmap player-pro-demo
+
+vi configmap-posix-demo.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: configmap-posix-demo
+spec:
+  containers:
+    - name: configmap-posix
+      image: anshuldevops/kubernetes-web:1.10.6
+      ports:
+        - containerPort: 8080
+      envFrom:
+        - configMapRef:
+            name: player-posix-demo
+```
+
+kubectl apply -f configmap-posix-demo.yml
+
+kubectl describe pod configmap-posix-demo
+
+kubectl get pods
+
+kubectl exec configmap-posix-demo -t -- /bin/bash
+
+
+
+### ConfigMap and Secret from File
+
+sudo apt-get update
+
+apt install apache2-utils
+
+htpasswd -c .htpasswd user => INPUT A PASSWORD, AND REMEMEBR IT
+
+cat .htpasswd
+
+kubectl create secret generic nginx-htpasswd --from-file .htpasswd
+
+kubectl get secret
+
+kubectl describe secret nginx-htpasswd
+
+rm -rf .htpasswd
+
+vi nginx.conf
+
+```
+user nginx
+worker_processes auto
+
+error_log /var/log/nginx/error.log notice
+pid /var/run/nginx.pid
+
+events
+{
+  worker_connections 1024
+}
+
+http
+{
+  server
+  {
+    listen 80
+    server_name localhost
+
+    location /
+    {
+      root /usr/share/nginx/html
+      index index.html index.htm
+    }
+
+    auth_basic "Secure Site"
+    auth_basic_user_file conf/.htpasswd
+  }
+}
+
+```
+
+kubectl create configmap nginx-config-file --from-file nginx.conf
+
+kubectl describe configmap nginx-config-file
+
+vi nginx-pod.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-pod
+spec:
+  containers:
+    - name: nginx-container
+      image: 'nginx:1.19.1'
+      ports:
+        - containerPort: 80
+      volumeMounts:
+        - name: nginx-config-volume
+          mountPath: /etc/nginx
+        - name: htpasswd-volume
+          mountPath: /etc/nginx/conf
+  volumes:
+    - name: nginx-config-volume
+      configMap:
+        name: nginx-config-file
+    - name: htpasswd-volume
+      secret:
+        secretName: nginx-htpasswd
+```
+
+kubectl apply -f nginx-pod.yml
+
+kubectl get pods
+
+curl -u user:123 192.168.226.71
