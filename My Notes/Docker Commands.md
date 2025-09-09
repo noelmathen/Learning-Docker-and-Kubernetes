@@ -1356,13 +1356,11 @@ kubectl get rolebinding -n development
 * Environement Variables - Used to pass configmap and secrets to containers
 * Mount Volume - Same thing
 
-
 ### Manage Applications using ENV Variables
 
 mkdir pods_and_containers && cd pods_and_containers
 
 vi example-configMap.yml
-
 
 apiVersion: v1
 
@@ -1452,9 +1450,6 @@ kubectl get pods
 
 kubectl exec configmap-env-demo -it -- sh
 
-
-
-
 ### Manage Applications using Mount Volumes
 
 vi configmap-vol-demo.yml
@@ -1492,7 +1487,6 @@ kubectl apply -f configmap-vol-demo.yml
 kubectl exec configmap-vol-demo -it -- sh
 
 * Inside the container, You can view the location and file contents where the configmaps and secrets are mounted using the YAML file.
-
 
 ### Manage Application Configuration Posix ConfigMap
 
@@ -1541,8 +1535,6 @@ kubectl describe pod configmap-posix-demo
 kubectl get pods
 
 kubectl exec configmap-posix-demo -t -- /bin/bash
-
-
 
 ### ConfigMap and Secret from File
 
@@ -1632,3 +1624,302 @@ kubectl apply -f nginx-pod.yml
 kubectl get pods
 
 curl -u user:123 192.168.226.71
+
+
+### Manage Container Resources in K8s
+
+* Resource Request - Preferred usage. May use above or below this
+* ```
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: frontend-1
+  spec:
+    containers:
+    - name: app
+      image: alpine
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
+  ---
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: frontend-2
+  spec:
+    containers:
+    - name: app
+      image: alpine
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
+  ---
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: frontend-3
+  spec:
+    containers:
+    - name: app
+      image: alpine
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
+  ---
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: frontend-4
+  spec:
+    containers:
+    - name: app
+      image: alpine
+      command: ["sleep", "3600"]
+      resources:
+        requests:
+          memory: "64Mi"
+          cpu: "250m"
+  ```
+* Resource Limit - Actual limit. Wont use above this.
+
+  * If CPU limit exceed - Container still run
+  * If memory exceed - Container killed, and restarted according to restart policy
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: frontend-limit
+    spec:
+      containers:
+      - name: app
+        image: alpine
+        command: ["sleep", "3600"]
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "250m"
+          limits:
+            memory: "128Mi"
+            cpu: "500m"
+    ```
+
+
+### **Monitor Container Resources in K8s**
+
+* Container Heath
+* Liveness Probe(active helathcheck)
+
+  * Determine Container State
+  * Run commands in container
+  * Or periodic HTTP healthcheck
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: liveness-probe
+    spec:
+      containers:
+        - name: liveness
+          image: k8s.gcr.io/busybox
+          args:
+            - /bin/sh
+            - -c
+            - touch /tmp/healthcheck; sleep 60; rm -rf /tmp/healthcheck; sleep 600
+          livenessProbe:
+            exec:
+              command:
+                - cat
+                - /tmp/healthcheck
+            initialDelaySeconds: 5
+            periodSeconds: 5
+
+    ---
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: liveness-probe-http
+    spec:
+      containers:
+        - name: liveness-nginx
+          image: k8s.gcr.io/nginx
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 3
+    ```
+* Startup Probe
+
+  * Runs at container startup, and stops when container stops running
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: startup-probe-http
+    spec:
+      containers:
+        - name: startup-nginx
+          image: k8s.gcr.io/nginx
+          startupProbe:
+            httpGet:
+              path: /
+              port: 80
+            failureThreshold: 30
+            periodSeconds: 10
+    ```
+* Readiness probe
+
+  * Used to detect if containers are ready to accept traffic
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: hc-probe
+    spec:
+      containers:
+        - name: nginx
+          image: k8s.gcr.io/nginx
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 3
+    ```
+
+
+### Pod Restart Policies
+
+* K8s restart containers if they fail
+* We can customize it according to our needs
+* THree restart policies: Always, OnFailure, Never
+* Always
+  * Default policies
+  * Even if container completed successfully, it will restart
+  * Recommended for always ion running state
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: restart-always-pod
+    spec:
+      restartPolicy: Always
+      containers:
+        - name: app
+          image: alpine
+          command: ["sleep", "10"]
+    ```
+* OnFailure
+  * Works if container exits wiht errorcode
+  * Works wiht liveness probe
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: onfailure-always-pod
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: app
+          image: alpine
+          command: ["sleep", "10"]
+    ```
+* Never
+  * It will never be restarted
+  * For applications that need to be run only once
+  * ```
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      name: never-always-pod
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: app
+          image: alpine
+          command: ["sleep", "10"]
+    ```
+
+
+
+### MultiContainer Pods
+
+* Contianers can share the resources of the pod
+* Best practice is to keep single contianer in single pod
+* Can use same shared network, shared volume etc etc.
+* Connect and communicate through localhost
+* ```
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: two-containers
+  spec:
+    restartPolicy: OnFailure
+    containers:
+      - name: nginx-container
+        image: nginx
+        volumeMounts:
+          - name: shared-data
+            mountPath: /usr/share/nginx/html
+      - name: debian-container
+        image: debian
+        volumeMounts:
+          - name: shared-data
+            mountPath: /pod-data
+        command: ["/bin/sh"]
+        args: ["-c", "echo Hello from the Secondary container > /pod-data/index.html"]
+    volumes:
+      - name: shared-data
+        emptyDir: {}
+  ```
+
+
+
+### Container Initialisation
+
+* Runs before app containers
+* Execute only once
+* Specialised instructions/utilities/setup scripts
+* we can define N number of init containers
+* Init containers offer a mechanism to block or delay app container startup until a set of preconditions are met.
+* ```
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: application-pod
+  spec:
+    containers:
+      - name: myapp-container
+        image: busybox:1.28
+        command: ["sh", "-c", "echo The app is running! && sleep 3600"]
+    initContainers:
+      - name: init-myservice
+        image: busybox:1.28
+        command:
+          [
+            "sh",
+            "-c",
+            "until nslookup myservice.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for myservice; sleep 5; done",
+          ]
+      - name: init-mydb
+        image: busybox:1.28
+        command:
+          [
+            "sh",
+            "-c",
+            "until nslookup mydb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 5; done",
+          ]
+  ```

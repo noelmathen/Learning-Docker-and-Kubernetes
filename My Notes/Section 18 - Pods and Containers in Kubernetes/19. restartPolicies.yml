@@ -7,7 +7,7 @@ spec:
   containers:
     - name: app
       image: alpine
-      command: ["sleep", "20"]
+      command: ["sleep", "10"]
 
 ---
 apiVersion: v1
@@ -19,7 +19,7 @@ spec:
   containers:
     - name: app
       image: alpine
-      command: ["sleep", "20"]
+      command: ["sleep", "10"]
 
 ---
 apiVersion: v1
@@ -31,4 +31,4 @@ spec:
   containers:
     - name: app
       image: alpine
-      command: ["sleep", "20"]
+      command: ["sleep", "10"]
