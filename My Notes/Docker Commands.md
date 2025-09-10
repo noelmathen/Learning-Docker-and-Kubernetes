@@ -2019,20 +2019,16 @@ Static Pods
 * kubelet watches each static Pod (and restarts it if it fails).
 * Kubelet automatically creates Static Pods from YAML file located at manifest path on the Node.
 
-
 Mirror Pods
 
 * create one for each static pod
 * Mirror pods allows user to monitor Static Pods via K8s APIs.
 * User can't change or Update Static Pods via Mirror Pods.
-
-
 * SSH into a worker node.
 * cd /etc/kubernetes/manifests/ (this is where it watches for static pods)
 * Give any pod defenition in the yaml file.
 * in the amster, check for pods. a new pod will be created.
 * but we can edit or delete it or anything, coz its a mirror pod
-
 
 ### Node Affinity in K8s
 
@@ -2082,3 +2078,218 @@ spec:
                 values:
                   - ssd
 ```
+
+# Section 20 - Deployments in Kubernetes
+
+### Scaling application in K8s
+
+* RPM - Request per minute
+* Horizontal Scaling - more instances
+* Vertical Scaling - increas resources of an instance
+* Stateless application - doesnt save state. no saving of client data. output based on input. Can be scaed horizontally
+* Statefull application - Saves the client data. Scaled vertically
+* ReplicationController - Specify number os pod replciations at one point
+
+```
+mkdir deployments && cd deployments
+vi replication-controller.yml
+
+apiVersion: v1
+kind: ReplicationController
+metadata:
+  name: alipne-box-replicationcontroller
+spec:
+  replicas: 3
+  selector:
+    app: alipne-box
+  template:
+    metadata:
+      name: alpine
+      labels:
+        app: alipne-box
+    spec:
+      containers:
+      - name: alpine-box
+        image: alpine
+        command: ["sleep", "3600"]
+
+
+kubectl apply -f replication-controller.yml
+kubectl get replicationcontroller/alipne-box-replicationcontroller
+kubectl get pods -o wide
+kubectl delete pod alipne-box-replicationcontroller-4p6l4
+kubectl scale --replicas=6 replicationcontroller/alipne-box-replicationcontroller
+kubectl scale --replicas=2 replicationcontroller/alipne-box-replicationcontroller
+kubectl delete -f replication-controller.yml
+```
+
+
+
+### ReplicaSets in K8s
+
+* Enhanced version of replicationset
+* Difference is the selector support(int the YAML file)
+* Helps to use "set based" label selector
+* In, NotIn, Exists operators are used
+* Bare Pods
+  * While created Bare Pods, bare Pods do not have labels which match the selector of one of your ReplicaSets.
+  * ReplicaSet is not limited to owning Pods specified by its template-- it can acquire other Pods which have matching Labels.
+
+
+vi replica-set.yml
+
+```
+apiVersion: apps/v1
+kind: ReplicaSet
+metadata:
+  name: myapp-replicas
+  labels:
+    app: myapp
+    tier: frontend
+spec:
+  replicas: 3
+  selector:
+    matchExpressions:
+      - {key: tier, operator: In, values: [frontend]}
+  template:
+    metadata:
+      labels:
+        app: myapp
+        tier: frontend
+    spec:
+      containers:
+      - name: nginx
+        image: nginx
+        ports:
+        - containerPort: 80
+```
+
+kubectl apply -f replica-set.yml
+
+kubectl get rs/myapp-replicas
+
+vi replicaSet_and_barePods.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod1
+  labels:
+    tier: frontend
+spec:
+  containers:
+  - name: application1
+    image: gcr.io/google-samples/hello-app:1.0
+
+---
+
+apiVersion: v1
+kind: Pod
+metadata:
+  name: mypod2
+  labels:
+    tier: frontend
+spec:
+  containers:
+  - name: application2
+    image: gcr.io/google-samples/hello-app:2.0
+
+
+
+```
+
+kubectl apply -f replicaSet_and_barePods.yml
+
+kubectl get pods -o wide
+
+* Here, since the bare pods has the same labels(key-value pair) specified in the replica set, eventhough that pod is not specified, it will me managed by the replicaset.
+
+
+### Deployments in K8s
+
+* Controls replicasets and pods
+* Use Cases:
+  * Create Deployment
+  * Update Deployments
+  * Rolling Upgrades
+  * Rollback
+  * Pause/Resume Deployments
+
+
+vi deployments.yml
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chef-server
+  labels:
+    app: chef
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chef-server
+  template:
+    metadata:
+      labels:
+        app: chef-server
+    spec:
+      containers:
+        - name: chef-server
+          image: 'chef/chefdk:4.9'
+          ports:
+            - containerPort: 8080
+          command:
+            - /bin/sh
+          args:
+            - '-c'
+            - echo Hello from the Chef container; sleep 3600
+        - name: ubuntu
+          image: 'ubuntu:18.04'
+          ports:
+            - containerPort: 8080
+          command:
+            - /bin/sh
+          args:
+            - '-c'
+            - echo Hello from the Ubantu container; sleep 3600
+
+```
+
+kubectl apply -f deployments.yml
+
+kubectl get deployment.apps/chef-server
+
+kubectl get pods -o wide
+
+kubectl rollout status deployment.apps/chef-server
+
+kubectl describe deployment.apps/chef-server
+
+kubectl get rs
+
+kubectl get pods --show-labels
+
+kubectl set image deployment/chef-server chef-server=chef/chefdk:4.9.10
+
+kubectl rollout status deployment.apps/chef-server
+
+kubectl get pods --show-labels
+
+kubectl rollout history deployment.apps/chef-server
+
+kubectl set image deployment/chef-server chef-server=chef/chefdk:4.9.14 --record (iamge changes, also change is recorded)
+
+kubectl rollout undo deployment.apps/chef-server (Undoing the change)
+
+kubectl rollout undo deployment.apps/chef-server --to-revision=1 (rolling back to a particular revision)
+
+kubectl rollout pause deployment.apps/chef-server (pausing the deployment)
+
+kubectl set resource deployment/chef-server -c=chef-server --limits=memory=250Mi (Can make any number of changes while paused. it wont be reflected until resumed)
+
+kubectl rollout resume deployment.apps/chef-server
+
+kubectl scale deployments.apps/chef-server --replicas=5
