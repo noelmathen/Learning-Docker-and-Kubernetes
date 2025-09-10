@@ -1625,7 +1625,6 @@ kubectl get pods
 
 curl -u user:123 192.168.226.71
 
-
 ### Manage Container Resources in K8s
 
 * Resource Request - Preferred usage. May use above or below this
@@ -1708,7 +1707,6 @@ curl -u user:123 192.168.226.71
             memory: "128Mi"
             cpu: "500m"
     ```
-
 
 ### **Monitor Container Resources in K8s**
 
@@ -1800,7 +1798,6 @@ curl -u user:123 192.168.226.71
             periodSeconds: 3
     ```
 
-
 ### Pod Restart Policies
 
 * K8s restart containers if they fail
@@ -1853,8 +1850,6 @@ curl -u user:123 192.168.226.71
           command: ["sleep", "10"]
     ```
 
-
-
 ### MultiContainer Pods
 
 * Contianers can share the resources of the pod
@@ -1885,8 +1880,6 @@ curl -u user:123 192.168.226.71
       - name: shared-data
         emptyDir: {}
   ```
-
-
 
 ### Container Initialisation
 
@@ -1923,3 +1916,169 @@ curl -u user:123 192.168.226.71
             "until nslookup mydb.$(cat /var/run/secrets/kubernetes.io/serviceaccount/namespace).svc.cluster.local; do echo waiting for mydb; sleep 5; done",
           ]
   ```
+
+# Section 19 - Pods Allocation in Kubernetes
+
+### K8s Pods Scheduling
+
+* Scheduler is a component of master node
+* Based on:
+
+  * Resource request vs Available Node Resources
+  * Configuration
+  * nodeSelector, Affinity, Anti-Affinity
+  * nodeSelector
+    * Defined in pod spec
+    * manually select nodes
+    * Use node labels
+    * Use node name
+* vi nodeselector.yml
+* ```
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: nginx-nodeselector
+  spec:
+    containers:
+      - name: nginx
+        image: nginx
+    nodeSelector:
+      disktype: ssd
+  ```
+* kubectl get nodes --show-labels
+* kubectl label nodes mycluster-m03 disktype=ssd (manually change the node label)
+* If scheduler fins a node with the label, then only the container will run.
+* vi nodename.yml
+* ```
+  apiVersion: v1
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: nginx-nodename
+  spec:
+    containers:
+      - name: nginx
+        image: nginx
+    nodeName: mycluster-m02
+  ```
+* vi resource-request.yml
+* ```
+  apiVersion: v1
+  kind: Pod
+  metadata:
+    name: frontend-app
+  spec:
+    containers:
+      - name: app
+        image: alpine
+        command:
+          - sleep
+          - '3600'
+        resources:
+          requests:
+            memory: 64Mi
+            cpu: 1000m
+    nodeSelector:
+      disktype: ssd
+  ```
+
+### DaemonSets
+
+* Automatically Run a copy of a Pod on Each Node.
+* DaemonSet run a Copy of a Pod on New Node as they added to Cluster.
+* DaemonSet will be helpful in case of Monitoring, Log Collection, Proxy Configuration etc.
+* vi daemonset.yml
+* ```
+  apiVersion: apps/v1
+  kind: DaemonSet
+  metadata:
+    name: logging
+  spec:
+    selector:
+      matchLabels:
+        app: httpd-logging
+    template:
+      metadata:
+        labels:
+          app: httpd-logging
+      spec:
+        containers:
+          - name: webserver
+            image: httpd
+            ports:
+              - containerPort: 80
+  ```
+* Three pods, named logging, will be dcreated on three of the existing nodes(all nodes)
+
+### Static Pods
+
+Static Pods
+
+* Manages by kubelet
+* K8s API Server is not required for Static Pods.
+* kubelet watches each static Pod (and restarts it if it fails).
+* Kubelet automatically creates Static Pods from YAML file located at manifest path on the Node.
+
+
+Mirror Pods
+
+* create one for each static pod
+* Mirror pods allows user to monitor Static Pods via K8s APIs.
+* User can't change or Update Static Pods via Mirror Pods.
+
+
+* SSH into a worker node.
+* cd /etc/kubernetes/manifests/ (this is where it watches for static pods)
+* Give any pod defenition in the yaml file.
+* in the amster, check for pods. a new pod will be created.
+* but we can edit or delete it or anything, coz its a mirror pod
+
+
+### Node Affinity in K8s
+
+* Enhanced version of nodeSelector
+* used for pod allocation
+* To not schedule a pod on a node, we can use anti-affinity
+* reqeiredDuringScheduling (Hard affinity)
+* preferredDuringScheduling (Soft Affinity)
+* IgnoredDuringExecution
+* operator: In (For affinity)
+* operator: NotIn (For anti-affinity)
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-nodeaffinity
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: disktype
+                operator: In
+                values:
+                  - ssd
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-node-anti-affinity
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+  affinity:
+    nodeAffinity:
+      requiredDuringSchedulingIgnoredDuringExecution:
+        nodeSelectorTerms:
+          - matchExpressions:
+              - key: disktype
+                operator: NotIn
+                values:
+                  - ssd
+```
