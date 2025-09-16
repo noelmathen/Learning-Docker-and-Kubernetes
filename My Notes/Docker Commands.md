@@ -2379,8 +2379,6 @@ exit
 * Ports:
   * speioocfy one or more ports that allows traffic
 
-
-
 In this labs, it wont work properly on minikube. Kubeadm and cluster setup in a proper HA server is required!
 
 vi network-pol-pods.yml
@@ -2412,3 +2410,293 @@ kubectl apply -f network-policy.yml
 kubectl get networkpolicy -n network-policy -o wide
 
 kubectl exec -n network-policy busybox-pod -- curl 10.244.2.3
+
+# Section 22 - Kubernetes Services
+
+### K8s Services Overview
+
+* Access pods from outer world
+* Abstract layer btw pods and client
+* exposes applications as a set of pods
+* Service Routing
+  * Client make Request to Service, which route traffic to Pods in Load Balancer Fashion.
+* EndPoints
+  * EndPoints are BackEnd Entities, to which Service Route Traffic.
+  * Each Pod have EndPoint associate with Service.
+
+### Service Types
+
+* Each Service has a Type. ServiceType define how and where Service will Expose the Application.
+* 4 Types: ClusterIP, NodePort, LoadBalancer, ExternalName
+* If type not mention in YAML file, then by default, ClusterIP.
+* ClusterIP Service:
+  * Expose application wihtin the cluster network
+  * Used when client is other pod wihtin the same cluster
+  * Eventhough already communcation btw pdos are enables through networking, if the pds are in different namespaces or anything, these services are used.
+* NodePort Service
+  * Exposes application to outside cluster network
+  * Client is not present in cluster
+* LoadBalancer Service
+  * Load Balancer Service also expose Application to Outer World but Cloud ILB is required.
+
+mkdir services_k8s
+
+cd services_k8s/
+
+vi spc-pod.yml
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-server
+  labels:
+    app: frontend
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: frontend
+  template:
+    metadata:
+      labels:
+        app: frontend
+    spec:
+      containers:
+        - name: nginx
+          image: nginx
+          ports:
+            - containerPort: 80
+```
+
+kubectl apply -f spc-pod.yml
+
+kubectl describe deployment.apps/nginx-server
+
+kubectl get pods
+
+vi clusterip-svc.yml
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  type: ClusterIP
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+```
+
+kubectl apply -f clusterip-svc.yml
+
+kubectl describe service/nginx-service
+
+curl nginx-service:8080 (wont work, since its outside of cluster)
+
+vi temp-pod.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: pod-svc-test
+spec:
+  containers:
+    - name: busybox
+      image: radial/busyboxplus:curl
+      command:
+        - sleep
+        - '3600'
+```
+
+kubectl apply -f temp-pod.yml
+
+kubectl exec pod-svc-test -- curl nginx-service:8080 (this will work, coz its inside the port)
+
+vi nodeport-svc.yml
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service-nodeport
+spec:
+  type: NodePort 
+  selector:
+    app: frontend
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 80
+      nodePort: 30099
+```
+
+kubectl apply -f nodeport-svc.yml
+
+kubectl describe service/nginx-service-nodeport
+
+curl localhost:30099
+
+### Discover Services in K8s
+
+* Kubernetes DNS assign DNSNames to Services, allow applications within Cluster to easily locate the Service.
+* Service Fully Qualified Name has the following format- "Service-name.namespace-name.svc.cluster-domain.example"
+* Service fully qualified Domain Name can be used to reach service from within any Namespace in Cluster: "Service-name.namespace-name.svc.cluster.local""
+* Pods within the same NameSpace can use the Service Name Only.
+
+ vi dns-service-pod.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: svc-test-dns
+  namespace: service-namespace
+spec:
+  containers:
+    - name: busybox-svc
+      image: radial/busyboxplus:curl
+      command:
+        - sleep
+        - '3600'
+```
+
+
+
+### Manage Access via ingress Controller
+
+* Ingress in Kubernetes Manage the External Access to Service.
+* External Client -> Ingress -> Serivce
+* Apart from NodePort Service, Ingress is capable of many more.
+* Provide the SSL Termination, Load Balancing, NameBase Virtual Hosting.
+* In order for the Ingress resource to work, the cluster must have an ingress controller running.
+* Variety of Ingress Controller available in K8s to provide the multiple mechanism for external access of Service.
+* Ingress define a set of Routing Rules.
+* Each Rule has a set of Paths, each with a Backend. Request matching a path will be routed to associated Backend.
+
+
+vi nginx-deployment.yml
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-official-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nginx-official
+  template:
+    metadata:
+      labels:
+        app: nginx-official
+    spec:
+      containers:
+        - name: nginx-official
+          image: 'nginx:latest'
+          ports:
+            - containerPort: 8080
+
+```
+
+
+vi nginx-deployment-service.yml
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-official-service
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 80
+      nodePort: 31303
+  selector:
+    app: nginx-official
+```
+
+
+vi magicalnginx-deployment-service.yml
+
+```
+apiVersion: v1
+kind: Service
+metadata:
+  name: magical-nginx
+spec:
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 80
+      nodePort: 31304
+      name: http
+  selector:
+    app: magical-nginx
+```
+
+
+vi magicalnginx-nginx-deployment.yml
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: magicalnginx-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: magical-nginx
+  template:
+    metadata:
+      labels:
+        app: magical-nginx
+    spec:
+      containers:
+        - name: magical-nginx
+          image: 'anshuldevops/magicalnginx:latest'
+          ports:
+            - name: nginx-port
+              containerPort: 3000
+
+```
+
+
+vi ingress-controller.yml
+
+```
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-rules
+spec:
+  rules:
+  - host: nginx-official.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: nginx-official-service
+            port:
+              number: 80
+  - host: magical-nginx.example.com
+    http:
+      paths:
+      - path: /
+        pathType: Exact
+        backend:
+          service:
+            name: magical-nginx
+            port:
+              number: 80
+```
