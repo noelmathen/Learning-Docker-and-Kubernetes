@@ -2123,8 +2123,6 @@ kubectl scale --replicas=2 replicationcontroller/alipne-box-replicationcontrolle
 kubectl delete -f replication-controller.yml
 ```
 
-
-
 ### ReplicaSets in K8s
 
 * Enhanced version of replicationset
@@ -2134,7 +2132,6 @@ kubectl delete -f replication-controller.yml
 * Bare Pods
   * While created Bare Pods, bare Pods do not have labels which match the selector of one of your ReplicaSets.
   * ReplicaSet is not limited to owning Pods specified by its template-- it can acquire other Pods which have matching Labels.
-
 
 vi replica-set.yml
 
@@ -2205,7 +2202,6 @@ kubectl get pods -o wide
 
 * Here, since the bare pods has the same labels(key-value pair) specified in the replica set, eventhough that pod is not specified, it will me managed by the replicaset.
 
-
 ### Deployments in K8s
 
 * Controls replicasets and pods
@@ -2215,7 +2211,6 @@ kubectl get pods -o wide
   * Rolling Upgrades
   * Rollback
   * Pause/Resume Deployments
-
 
 vi deployments.yml
 
@@ -2293,3 +2288,127 @@ kubectl set resource deployment/chef-server -c=chef-server --limits=memory=250Mi
 kubectl rollout resume deployment.apps/chef-server
 
 kubectl scale deployments.apps/chef-server --replicas=5
+
+# Section 21 - Kubernetes Networking
+
+### Overview
+
+* Networking between pods
+* Calico netweok for HA setup
+* Fundamentals
+  * Pods on a node can communicate with all Pods on all nodes without NAT(netwrk address translation).
+  * Agents on a node (e.g. system daemons, kubelet) can communicate with all pods on that node.
+  * Every pods has its own IP address
+
+### CNI Plugins
+
+* K8s network plugins
+* Provides connectivity between Pods
+* Multiple CNI plugins are available
+* Selection
+  * Go through documentation
+  * We are using Calico netowrk - supports kubeadm pretty well
+* K8s nodes will be not ready intil network is implemented
+
+### DNS in K8s
+
+* K8s Virtual Network uses DNS to allow PODs to locate other PODs and Services using Domain Name.
+* DNS runs as a service
+* Kubeadm and minikube uses DNS
+* pod-ip.namespace-name.pod.cluster.local
+
+mkdir networking && cd networking
+
+vi pods-dns.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: nginx-nodename
+spec:
+  containers:
+    - name: nginx
+      image: nginx
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: frontend-app
+spec:
+  containers:
+    - name: app
+      image: alpine
+      command:
+        - sleep
+        - '3600'
+```
+
+kubectl get pods -o wide(note the IP of the frontend app)
+
+kubectl exec -it frontend-app sh (get inside the frontend app pod)
+
+apk update
+
+apk add curl
+
+curl 10-244-1-15.default.pod.cluster.local (contacting the IP of the nginx pod)
+
+exit
+
+### Using K8s Network Policies
+
+* Control Traffic Flows
+* An object in K8s
+* Pods can communicate using 3 identifieres:
+  * Other pods that are allowed
+  * Allowed namespaces
+  * IP blocks
+* Brings mroe security
+* By default, pods are non isolated
+* We can isolate by network policies
+* podSeIector :
+  * Determines to which Pods in namespace the NetworkPolicy will be applied.
+  * Select pods using labels
+  * If empty, selects all pods in namespace
+* Appied on all Ingress, Engress and both traffic
+* fromSelector:
+  * Sweects Ingress traffic will be allowed on the Pods
+* toSelector
+  * for engress traffic
+* Ports:
+  * speioocfy one or more ports that allows traffic
+
+
+
+In this labs, it wont work properly on minikube. Kubeadm and cluster setup in a proper HA server is required!
+
+vi network-pol-pods.yml
+
+kubectl create namespace network-policy
+
+kubectl label namespace network-policy role=test-network-policy
+
+kubectl get namespaces --show-labels
+
+kubectl apply -f network-pol-pods.yml
+
+kubectl get pods -o wide -n network-policy
+
+kubectl exec -n network-policy busybox-pod -- curl 10.244.2.3 (IP of the nginx pod)
+
+vi network-policy.yml
+
+kubectl apply -f network-policy.yml
+
+kubectl get networkpolicy -n network-policy -o wide
+
+kubectl exec -n network-policy busybox-pod -- curl 10.244.2.3
+
+vi network-policy.yml
+
+kubectl apply -f network-policy.yml
+
+kubectl get networkpolicy -n network-policy -o wide
+
+kubectl exec -n network-policy busybox-pod -- curl 10.244.2.3
