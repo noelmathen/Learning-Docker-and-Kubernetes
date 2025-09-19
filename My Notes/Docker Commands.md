@@ -2566,8 +2566,6 @@ spec:
         - '3600'
 ```
 
-
-
 ### Manage Access via ingress Controller
 
 * Ingress in Kubernetes Manage the External Access to Service.
@@ -2578,7 +2576,6 @@ spec:
 * Variety of Ingress Controller available in K8s to provide the multiple mechanism for external access of Service.
 * Ingress define a set of Routing Rules.
 * Each Rule has a set of Paths, each with a Backend. Request matching a path will be routed to associated Backend.
-
 
 vi nginx-deployment.yml
 
@@ -2605,7 +2602,6 @@ spec:
 
 ```
 
-
 vi nginx-deployment-service.yml
 
 ```
@@ -2622,7 +2618,6 @@ spec:
   selector:
     app: nginx-official
 ```
-
 
 vi magicalnginx-deployment-service.yml
 
@@ -2641,7 +2636,6 @@ spec:
   selector:
     app: magical-nginx
 ```
-
 
 vi magicalnginx-nginx-deployment.yml
 
@@ -2669,10 +2663,10 @@ spec:
 
 ```
 
-
 vi ingress-controller.yml
 
 ```
+
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -2700,3 +2694,208 @@ spec:
             port:
               number: 80
 ```
+
+# Section 23 - Kubernetes Storage
+
+### Storage Overview
+
+* Container File system is ephemeral - Files in container File System Exists only as long as the Container Exists.
+* Data in container File System is lost as soon as Container Deleted or recreated.
+* Persistent Data
+* Use Volumes - Containers can access these volumes outside, in runtime
+* Persistent Volumes - Storage is treated as an abstract system
+* It is a resource in K8s. Can be attached to pods/containers
+* Volume Types:
+  * NFS - Network File Sysstem
+  * Cloud Storage
+  * ConfigMaps and Secrets
+  * File System on K8s Node
+
+
+### Using K8s Volumes
+
+* Volume - Pod Specification
+* Volume Mount - Container Specification
+* emptyDir:
+  * emptyDir created when Pod is assigned to Node and Persist as long as Pod running on the Node.
+  * Multiple containers can refer the same emptyDir Volume.
+  * Multiple containers in the Pod can read and write the same files in the emptyDir volume, though that volume can be mounted at the same or different paths in each container.
+* Share Volume:
+  * User can use the same volumeMounts to share the same Volume to multiple container within the Same Pod.
+  * This is very powerful feature which can be used to data transformation of Data Processing.
+  * hostPath & emtpyDir volumeType support share volumes.
+
+
+hostPath:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: hostpath-pod
+spec:
+  volumes:
+  - name: hostpath-vol
+    hostPath:
+      path: /var/tmp
+  containers:
+  - name: hostpath-pod
+    image: 'k8s.gcr.io/busybox'
+    command: ["/bin/sh", "-c", "echo Hello Team, This is Sample File for HostVolume - $(date) >> /output/output.txt"]
+    volumeMounts:
+    - name: hostpath-vol
+      mountPath: /output
+```
+
+* here, the output.txt file will be mounted to /var/tmp/. even if the pod is deleted, it will still be there. if it is recreated, it uses the same file.
+
+
+emptyDir:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: redis-emptydir
+spec:
+  containers:
+  - name: redis
+    image: redis
+    volumeMounts:
+    - name: redis-storage
+      mountPath: /data/redis
+  volumes:
+  - name: redis-storage
+    emptyDir: {}
+
+```
+
+* Here, emptyDir will be present as long as the pod is present. It will be deleted only if the pod is deleted.
+
+Shared Volume:
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: shared-multi-container
+spec:
+  volumes:
+    - name: html
+      emptyDir: {}
+  containers:
+    - name: nginx-container
+      image: nginx
+      volumeMounts:
+        - name: html
+          mountPath: /usr/share/nginx/html
+    - name: debian-container
+      image: debian
+      volumeMounts:
+        - name: html
+          mountPath: /html
+      command:
+        - /bin/sh
+        - '-c'
+      args:
+        - while true; do date >> /html/index.html; sleep 5; done
+```
+
+* In this, the actrual running html file is the nginx container, since its a webapplication and debian is not. but since it has a shared volume, and the html file in the shared volume is being modified by the devian container, the html file in the nginx container is also modified. (coz its a shared volume. whatever change in the shared volume wioll be applied to all the containers).
+
+
+### Persistent Volumes in K8s
+
+* PersistentVolumes are k8s Object that allow user to treat Storage as an Abstract Resource.
+* PV is a resource in K8s
+* PV uses a set of Attribute to describe the underlying storage resources (Disk or Cloud Storage), which will be used to store data.
+* Storage Class:
+  * StorageClass allows K8s Administrator to Specify all type of Storage Service they offer on their Platform.
+  * allowVolume Expansion - ability to resize the storage class
+* Reclaim Policy:
+  * persistentVoIumeReclaimPolicy - This define, how the storage will be reused, when the PVs associated PVCs are deleted.
+  * Retain - keep all data
+  * Delete - delete underlying storage resources.
+  * Recycle - Automatcally delete all data  in udnerlyinfg storage
+  * PersistentVolumeClaim
+    * PVC is a request for storage by user
+    * PVCs define a set of attribute Similar to hose of PVs.
+    * PVCs look for a PVs that is able to meet the criteria. If it found one, will automatically be bound to that PV.
+
+
+vi localvolume-sc.yml
+
+```
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: local-storage
+provisioner: kubernetes.io/no-provisioner
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
+```
+
+
+mypersistent-volume.yml
+
+```
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: my-persistnt-vol
+spec:
+  storageClassName: local-storage
+  persistentVolumeReclaimPolicy: Recycle
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /var/tmp
+```
+
+kubectl get pv -o wide
+
+
+vi my-pvc.yml
+
+```
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: my-pvc
+spec:
+  storageClassName: local-storage
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 100mi
+```
+
+kubectl get pvc -o wide (Stuatus will be waiting....for first action)
+
+
+vi my-pv-pod.yml
+
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pv-pod
+spec:
+  restartPolicy: Never
+  containers:
+    - name: busybox
+      image: busybox
+      command: ["sh", "-c", "echo Hello Team, This is Persistnent Volume Claim >> /output/success.txt"]
+      volumeMounts:
+      - mountPath: /output
+        name: my-pv
+  volumes:
+    - name: my-pv
+      persistentVolumeClaim:
+        claimName: my-pvc
+```
+
+kubectl edit pvc my-pvc (change 100 o 200Mi)
