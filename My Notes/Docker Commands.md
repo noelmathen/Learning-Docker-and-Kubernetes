@@ -2424,9 +2424,6 @@ spec:
 
 > Ensure an ingress controller (e.g., NGINX Ingress Controller) is installed; otherwise the Ingress resource won’t route traffic.
 
-
-
-
 # Section 23 - Kubernetes Storage
 
 ### Storage Overview
@@ -2671,3 +2668,227 @@ kubectl edit pvc my-pvc   # change 100Mi to 200Mi (if StorageClass allows expans
 * Pick **access modes** and **reclaim policy** based on how your app reads/writes and how you want to handle lifecycle.
 
 > TL;DR: `emptyDir` is your notepad, `hostPath` is a drawer in one desk, **PV/PVC** is proper storage in the building that you can claim, release, and move workers around without losing files.
+
+
+
+
+
+
+
+# Section 24 - Self Managed K8s on GCP
+
+**Markdown**
+
+```
+### Spin K8s Self Managed Cluster on GCP: 2025 Edition
+
+Here is a complete, updated guide to replace the outdated instructions. This guide includes all the fixes and best practices we discovered, such as using a larger master node, configuring the `containerd` runtime correctly, and using modern package repositories.
+
+### 1. Set Project and Zone in Google Cloud
+
+These commands configure your Cloud Shell environment to work with the correct project and a specific geographic zone.
+
+```bash
+# Replace <myProject> with your actual GCP Project ID
+gcloud config set project <myProject>
+
+gcloud config set compute/zone us-east1-b
+```
+
+### 2. Create the VPC Network and Subnet
+
+A Virtual Private Cloud (VPC) provides a private network for your VMs. We create the main network and then a specific subnet with an IP range for our nodes.
+
+**Bash**
+
+```
+# Create the VPC
+gcloud compute networks create k8s-cluster --subnet-mode custom
+
+# Create the subnet in the correct region for our zone
+gcloud compute networks subnets create k8s-nodes \
+  --network k8s-cluster \
+  --range 10.240.0.0/24 \
+  --region us-east1
+```
+
+### 3. Create Firewall Rules
+
+These rules control traffic to and from your VMs. We need to allow internal cluster communication, as well as external access for SSH and the Kubernetes API.
+
+**Bash**
+
+```
+# Allow internal communication between nodes on all protocols
+gcloud compute firewall-rules create k8s-cluster-allow-internal \
+  --allow tcp,udp,icmp,ipip \
+  --network k8s-cluster \
+  --source-ranges 10.240.0.0/24
+
+# Allow external traffic for SSH (port 22) and the Kubernetes API (port 6443)
+gcloud compute firewall-rules create k8s-cluster-allow-external \
+  --allow tcp:22,tcp:6443,icmp \
+  --network k8s-cluster \
+  --source-ranges 0.0.0.0/0
+```
+
+### 4. Create the Controller (Master) VM
+
+We will create a VM that is powerful enough to run the Kubernetes control plane stably, using an up-to-date Ubuntu LTS image.
+
+**Bash**
+
+```
+gcloud compute instances create master-node \
+    --boot-disk-size 200GB \
+    --can-ip-forward \
+    --image-family ubuntu-2204-lts \
+    --image-project ubuntu-os-cloud \
+    --machine-type n1-standard-4 \
+    --private-network-ip 10.240.0.11 \
+    --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
+    --subnet k8s-nodes \
+    --zone us-east1-b \
+    --tags k8s-cluster,master-node,controller
+```
+
+### 5. Create the Worker VMs
+
+We will create two smaller worker nodes using an up-to-date Ubuntu LTS image.
+
+**Bash**
+
+```
+for i in 0 1; do
+  gcloud compute instances create workernode-${i} \
+    --boot-disk-size 200GB \
+    --can-ip-forward \
+    --image-family ubuntu-2204-lts \
+    --image-project ubuntu-os-cloud \
+    --machine-type n1-standard-2 \
+    --private-network-ip 10.240.0.2${i} \
+    --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
+    --subnet k8s-nodes \
+    --zone us-east1-b \
+    --tags k8s-cluster,worker
+done
+```
+
+### 6. Prepare All Nodes (Run on Master and Both Workers)
+
+The following steps must be performed on **all three VMs** (`master-node`, `workernode-0`, and `workernode-1`). You will need to SSH into each one to run these commands (`gcloud compute ssh <vm_name>`).
+
+### 6.1. Install and Configure `containerd` Runtime
+
+Kubernetes now uses `containerd` instead of Docker. We need to install it and ensure its cgroup driver is set correctly to avoid critical errors.
+
+**Bash**
+
+```
+# Install containerd
+sudo apt-get update
+sudo apt-get install -y containerd
+
+# Create a default configuration file
+sudo mkdir -p /etc/containerd
+containerd config default | sudo tee /etc/containerd/config.toml
+
+# Set the cgroup driver to systemd
+sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+
+# Restart containerd to apply the new config
+sudo systemctl restart containerd
+```
+
+### 6.2. Disable Swap
+
+Kubernetes requires that you disable swap memory on all nodes.
+
+**Bash**
+
+```
+sudo swapoff -a
+# (Optional but recommended) To make this permanent, comment out the swap line in /etc/fstab
+sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
+```
+
+### 6.3. Install Kubernetes Packages (`kubeadm`, `kubelet`, `kubectl`)
+
+This uses the modern, recommended method for adding the Kubernetes package repositories.
+
+**Bash**
+
+```
+# Install prerequisite packages
+sudo apt-get update
+sudo apt-get install -y apt-transport-https ca-certificates curl gpg
+
+# Add Kubernetes GPG key
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL [https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key](https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key) | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+
+# Add the Kubernetes repository
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] [https://pkgs.k8s.io/core:/stable:/v1.30/deb/](https://pkgs.k8s.io/core:/stable:/v1.30/deb/) /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+
+# Install the tools
+sudo apt-get update
+sudo apt-get install -y kubelet kubeadm kubectl
+sudo apt-mark hold kubelet kubeadm kubectl
+```
+
+### 7. Initialize the Control Plane (Run Only on Master Node)
+
+This command bootstraps the cluster. The `--pod-network-cidr` is required for our network plugin (Calico).
+
+**Bash**
+
+```
+sudo kubeadm init --pod-network-cidr=192.168.0.0/16
+```
+
+After this command succeeds, it will print a `kubeadm join` command. **Copy it and save it somewhere safe.**
+
+### 8. Configure `kubectl` (Run Only on Master Node)
+
+This allows you to manage the cluster as a regular user.
+
+**Bash**
+
+```
+mkdir -p $HOME/.kube
+sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
+sudo chown $(id -u):$(id -g) $HOME/.kube/config
+```
+
+### 9. Install the Network Plugin (Run Only on Master Node)
+
+This installs Calico, allowing your pods and nodes to communicate.
+
+**Bash**
+
+```
+kubectl apply -f [https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml](https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml)
+```
+
+### 10. Join Worker Nodes to the Cluster
+
+For each worker node (`workernode-0` and `workernode-1`), run the `kubeadm join` command you saved from Step 7. Remember to run it with `sudo`.
+
+**Bash**
+
+```
+# (Run this on each worker node)
+sudo kubeadm join 10.240.0.11:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
+```
+
+### 11. Verify the Cluster Status (Run on Master Node)
+
+Check that all nodes have joined and are in the `Ready` state. It may take a minute or two for the worker nodes to become ready after joining.
+
+**Bash**
+
+```
+kubectl get nodes -w
+```
+
+You should see all three nodes listed with a `STATUS` of `Ready`. Your cluster is now fully operational.
