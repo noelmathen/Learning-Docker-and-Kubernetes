@@ -2669,12 +2669,6 @@ kubectl edit pvc my-pvc   # change 100Mi to 200Mi (if StorageClass allows expans
 
 > TL;DR: `emptyDir` is your notepad, `hostPath` is a drawer in one desk, **PV/PVC** is proper storage in the building that you can claim, release, and move workers around without losing files.
 
-
-
-
-
-
-
 # Section 24 - Self Managed K8s on GCP
 
 **Markdown**
@@ -2892,3 +2886,88 @@ kubectl get nodes -w
 ```
 
 You should see all three nodes listed with a `STATUS` of `Ready`. Your cluster is now fully operational.
+
+# Section 25 - Troubleshoot Self Managed K8s Cluster
+
+### Troubleshooting K8s Clusters
+
+* If Kube API Server is down, user won't be able to use Kubectl to Interact with Cluster.
+* User may get the error message look like -
+* "The connection to the server localhost:6443 was refused - did you specify the right host and port?"
+* Possible Fixes : Make Sure Docker and Kubelet services are up and running on your master node(s).
+* ```
+  kubectl get nodes
+  sudo systemctl status docker
+  kubectl dedscribe node <node-name>
+  sudo systemctl status kubelet
+  sudo systemctl start kubelet
+  sudo systemctl enable kubelet
+  kubectl get pods -n kube-system
+  kubectl describe pod podname -n kube-system
+
+  ```
+
+
+### Cluster and Node Logs
+
+```
+sudo journalctl -u kubectl
+sudo journalctl -u kubectl -n 100
+sudo journalctl -u kubelet -f (in worker node)
+kubectl logs etcd-master-node -n kube-system
+```
+
+
+### Troubleshoot Applications in K8s
+
+* kubectl exec `<pod-name>` -c `<container-name>` -- command
+* Kubectl exec is not used to execute Software in container that is not present in container.
+
+vi deployment.yml
+
+```
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chef-server
+  labels:
+    app: chef
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: chef-server
+  template:
+    metadata:
+      labels:
+        app: chef-server
+    spec:
+      containers:
+        # This container uses a known-good public image
+        - name: nginx-server
+          image: "nginx:latest"
+          ports:
+            - containerPort: 80
+          command: ["/bin/sh"]
+          args: ["-c", "echo Hello from the Nginx container; sleep 3600"]
+        # This container does not need to expose a port
+        - name: ubuntu
+          image: "ubuntu:18.04"
+          command: ["/bin/sh"]
+          args: ["-c", "echo Hello from the Ubuntu container; sleep 3600"]
+```
+
+kubectl apply -f deployment.yml
+
+kubectl exec chef-server-dbc4669b7-6gxgw  -c ubuntu -- ls
+
+kubectl exec -it chef-server-dbc4669b7-6gxgw  -c nginx-server -- ls
+
+kubectl exec -it chef-server-dbc4669b7-6gxgw  -c nginx-server -- /bin/bash
+
+
+### Container Logs in K8s
+
+kubectl logs chef-server-dbc4669b7-6gxgw -c ubuntu
+
+kubectl logs chef-server-dbc4669b7-6gxgw -cnginx-server
