@@ -2669,8 +2669,6 @@ kubectl edit pvc my-pvc   # change 100Mi to 200Mi (if StorageClass allows expans
 
 > TL;DR: `emptyDir` is your notepad, `hostPath` is a drawer in one desk, **PV/PVC** is proper storage in the building that you can claim, release, and move workers around without losing files.
 
-
-
 # Section 24 - Self Managed K8s on GCP
 
 ### Spin K8s Self-Managed Cluster on GCP: 2025 Edition
@@ -3093,4 +3091,186 @@ helm install my-release s3-charts/hello-world
 ```
 
 > Result: your application is installed from a private S3-backed Helm repository.
->
+
+# Section 27 - Serverless Functions on Kubernetes
+
+### Introduction
+
+* Public Cloud Providers provide server less capabilities in which user can deploy functions.
+* Serverless capabilities doesn't require to deploy containers o/ instances for containers.
+* AWS Lambda
+* Google Cloud Functions
+* Azure Functions
+* Serverless function doesn't need Infrastructure to Run on.Functions can be schedule and only invoke when required.
+* Serverless movement and the Container movement share the same vision of simplifying deploying and managing your application.
+* Serverless functions are already running on containers behind the scenes.
+* There is an orchestrator behind the scenes that's usually running your serverless functions.
+* Serverless allow you to build applications at a high abstraction level so you can focus more on developing your applications and less on the infrastructure underneath.
+* Serverless on public cloud reduce the Complexity, Operational Cost, Infrastructure Setup effort.
+* User don't need to manage the OS distribution.
+* User don't need to build the Containers.
+* User have to pay less, only for the time the function is running.
+* Developers just need to push the code without knowing the Infra.
+* But developer needs to manage the Operational Issues with the code.
+* Most Popular Serverless Frameworks and Projects:
+  * Fission
+  * Kubeless
+  * OpenWhisk
+  * OpenFaas
+* User needs to install these Projects on Kubernetes Cluster to use the Serverless Functions.
+* Administrator still needs to manage the Kubernetes Infrastructure.
+* Why Serverless on Kubernetes
+  * **Accelerate time to value with Kubernetes**: Allows you to quickly develop Kubernetes-based apps with no need for Kubernetes expertise.
+  * **Focus on Code, Not Infra**: Allow developers to move fast while improving the quality of your code from the start.
+  * **Simple, Inexpensive, Low Maintenance**: You can configure specific CPU and memory resource usage limits, set up rules for autoscaling, and set min/max parameters for your serverless functions.
+
+
+### Kubeless Introduction
+
+* Kubeless is a Kubernetes-native serverless framework that lets you deploy small bits of code (functions) without having to worry about the underlying infrastructure.
+* Kubeless is deployed on top of a Kubernetes cluster.
+* Kubeless enables functions to be deployed on a K8s cluster while allowing users to leverage Kubernetes resources to provide auto-scaling, API routing, monitoring and
+  troubleshooting.
+* Anything that triggers a Kubeless Function to execute is regarded by the Framework as an Event.
+* Kubeless is Open-Source and available free for Use.
+* Kubeless have UI available for Developer to Deploy Functions.
+* Kubeless Support all Major Languages: Python, Ruby, NodeJS, PHP, GoLang etc.
+* Kubeless is CLI compliant with AWS Lambda CLI.
+* Once Function is Deployed, User needs to find-out how to trigger these.
+* Currently Below mechanism supported:
+  * pubsub triggered (Kafka, NATS)
+  * http triggered (Exposed as Kubernetes Services)
+  * schedule triggered (Cron Jobs)
+
+
+### Install Kubeless and Deploy Functions
+
+This guide explains how to set up a serverless functions environment on Kubernetes. **While **
+
+**Kubeless** is a Kubernetes-native serverless framework, it's an archived project and is not compatible with modern Kubernetes versions^1^^1^^1^^1^^1^^1^^1^^1^^1^.
+
+**A better approach is to use a modern, actively maintained framework like **
+
+**OpenFaaS**^2^^2^^2^^2^. **This guide will use OpenFaaS to achieve the same serverless goals, including deploying a function equivalent to the Python example provided**^3^^3^.
+
+---
+
+#### **1. Prerequisites**
+
+Before you begin, ensure you have:
+
+* A running Kubernetes cluster (like Minikube).
+* The `kubectl` command-line tool configured to talk to your cluster.
+* Helm, the package manager for Kubernetes.
+
+---
+
+#### **2. Install the OpenFaaS Platform**
+
+**These steps will install the OpenFaaS components into your cluster**^4^^4^^4^^4^.
+
+* **Add the OpenFaaS Helm repository and create its namespaces:**
+  **Bash**
+
+  ```
+  helm repo add openfaas https://openfaas.github.io/faas-netes/
+  helm repo update
+  kubectl apply -f https://raw.githubusercontent.com/openfaas/faas-netes/master/namespaces.yml
+  ```
+* **Install OpenFaaS using Helm:**
+  **Bash**
+
+  ```
+  helm upgrade openfaas --install openfaas/openfaas \
+      --namespace openfaas \
+      --set functionNamespace=openfaas-fn \
+      --set generateBasicAuth=true
+  ```
+
+---
+
+#### **3. Install the CLI and Log In**
+
+You need the `faas-cli` tool to manage and deploy your functions.
+
+* **Open a new terminal** and forward the gateway's port to your local machine. Keep this terminal running.
+  **Bash**
+
+  ```
+  kubectl port-forward -n openfaas svc/gateway 8080:8080
+  ```
+* **Install the `faas-cli`:**
+  **Bash**
+
+  ```
+  curl -sSL https://cli.openfaas.com | sudo sh
+  ```
+* **Get your password and log in:**
+  **Bash**
+
+  ```
+  PASSWORD=$(kubectl get secret -n openfaas basic-auth -o jsonpath="{.data.basic-auth-password}" | base64 --decode; echo)
+  echo $PASSWORD | faas-cli login --username admin --password-stdin
+  ```
+
+---
+
+#### **4. Create and Deploy the Example Function**
+
+**We will now create and deploy a Python function that mirrors the behavior of the example **
+
+`<span class="citation-19">def hello(event, context): return event['data']</span>`^5^^5^^5^^5^.
+
+* **Create a new function using the Python 3 template:**
+  **Bash**
+
+  ```
+  faas-cli new --lang python3 hello --prefix=""
+  ```
+
+  This command creates a new directory `./hello` containing two files: `handler.py` and `hello.yml`.
+* Edit the function code:
+  Open the file ./hello/handler.py and replace its contents with the following code. This function simply returns the data it receives, just like the Kubeless example.
+  **Python**
+
+  ```
+  def handle(req):
+      """
+      handle a request to the function
+      Args:
+          req (str): request body
+      """
+      return req
+  ```
+* Deploy the function:
+  The faas-cli up command reads the YAML file, builds the function, and deploys it to your cluster.
+  **Bash**
+
+  ```
+  faas-cli up -f ./hello.yml
+  ```
+
+---
+
+#### **5. Call and Manage the Function**
+
+You can now interact with your deployed function.
+
+* Call the function:
+  This is the equivalent of the
+  `<span class="citation-18">kubeless function call</span>` command^6^.
+  **Bash**
+
+  ```
+  echo "Hello Serverless!" | faas-cli invoke hello
+  ```
+
+  The output will be: `Hello Serverless!`
+* List deployed functions:
+  This is similar to
+  `<span class="citation-17">kubectl get functions</span>`^7^.
+  **Bash**
+
+  ```
+  faas-cli list
+  ```
