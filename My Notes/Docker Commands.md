@@ -2669,90 +2669,70 @@ kubectl edit pvc my-pvc   # change 100Mi to 200Mi (if StorageClass allows expans
 
 > TL;DR: `emptyDir` is your notepad, `hostPath` is a drawer in one desk, **PV/PVC** is proper storage in the building that you can claim, release, and move workers around without losing files.
 
+
+
 # Section 24 - Self Managed K8s on GCP
 
-**Markdown**
+### Spin K8s Self-Managed Cluster on GCP: 2025 Edition
 
-```
-### Spin K8s Self Managed Cluster on GCP: 2025 Edition
+A clean, current walkthrough to replace out-of-date guides. This version uses a larger control-plane VM, configures `containerd` correctly, and installs Kubernetes from the modern package repo.
 
-Here is a complete, updated guide to replace the outdated instructions. This guide includes all the fixes and best practices we discovered, such as using a larger master node, configuring the `containerd` runtime correctly, and using modern package repositories.
-
-### 1. Set Project and Zone in Google Cloud
-
-These commands configure your Cloud Shell environment to work with the correct project and a specific geographic zone.
+### Set Project and Zone
 
 ```bash
-# Replace <myProject> with your actual GCP Project ID
+# Replace <myProject> with your GCP Project ID
 gcloud config set project <myProject>
-
 gcloud config set compute/zone us-east1-b
 ```
 
-### 2. Create the VPC Network and Subnet
+### Create the VPC Network and Subnet
 
-A Virtual Private Cloud (VPC) provides a private network for your VMs. We create the main network and then a specific subnet with an IP range for our nodes.
-
-**Bash**
-
-```
+```bash
 # Create the VPC
 gcloud compute networks create k8s-cluster --subnet-mode custom
 
-# Create the subnet in the correct region for our zone
+# Create the subnet in the region matching the chosen zone
 gcloud compute networks subnets create k8s-nodes \
   --network k8s-cluster \
   --range 10.240.0.0/24 \
   --region us-east1
 ```
 
-### 3. Create Firewall Rules
+### Create Firewall Rules
 
-These rules control traffic to and from your VMs. We need to allow internal cluster communication, as well as external access for SSH and the Kubernetes API.
-
-**Bash**
-
-```
-# Allow internal communication between nodes on all protocols
+```bash
+# Allow internal node-to-node traffic
 gcloud compute firewall-rules create k8s-cluster-allow-internal \
   --allow tcp,udp,icmp,ipip \
   --network k8s-cluster \
   --source-ranges 10.240.0.0/24
 
-# Allow external traffic for SSH (port 22) and the Kubernetes API (port 6443)
+# Allow SSH (22) and Kubernetes API (6443) from the internet
 gcloud compute firewall-rules create k8s-cluster-allow-external \
   --allow tcp:22,tcp:6443,icmp \
   --network k8s-cluster \
   --source-ranges 0.0.0.0/0
 ```
 
-### 4. Create the Controller (Master) VM
+### Create the Controller (Master) VM
 
-We will create a VM that is powerful enough to run the Kubernetes control plane stably, using an up-to-date Ubuntu LTS image.
-
-**Bash**
-
-```
+```bash
 gcloud compute instances create master-node \
-    --boot-disk-size 200GB \
-    --can-ip-forward \
-    --image-family ubuntu-2204-lts \
-    --image-project ubuntu-os-cloud \
-    --machine-type n1-standard-4 \
-    --private-network-ip 10.240.0.11 \
-    --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
-    --subnet k8s-nodes \
-    --zone us-east1-b \
-    --tags k8s-cluster,master-node,controller
+  --boot-disk-size 200GB \
+  --can-ip-forward \
+  --image-family ubuntu-2204-lts \
+  --image-project ubuntu-os-cloud \
+  --machine-type n1-standard-4 \
+  --private-network-ip 10.240.0.11 \
+  --scopes compute-rw,storage-ro,service-management,service-control,logging-write,monitoring \
+  --subnet k8s-nodes \
+  --zone us-east1-b \
+  --tags k8s-cluster,master-node,controller
 ```
 
-### 5. Create the Worker VMs
+### Create the Worker VMs
 
-We will create two smaller worker nodes using an up-to-date Ubuntu LTS image.
-
-**Bash**
-
-```
+```bash
 for i in 0 1; do
   gcloud compute instances create workernode-${i} \
     --boot-disk-size 200GB \
@@ -2768,164 +2748,135 @@ for i in 0 1; do
 done
 ```
 
-### 6. Prepare All Nodes (Run on Master and Both Workers)
+### Prepare All Nodes (Run on Master and Both Workers)
 
-The following steps must be performed on **all three VMs** (`master-node`, `workernode-0`, and `workernode-1`). You will need to SSH into each one to run these commands (`gcloud compute ssh <vm_name>`).
+SSH to each VM (`gcloud compute ssh <vm_name>`) and run the following.
 
-### 6.1. Install and Configure `containerd` Runtime
+### Install and Configure `containerd`
 
-Kubernetes now uses `containerd` instead of Docker. We need to install it and ensure its cgroup driver is set correctly to avoid critical errors.
-
-**Bash**
-
-```
-# Install containerd
+```bash
 sudo apt-get update
 sudo apt-get install -y containerd
 
-# Create a default configuration file
 sudo mkdir -p /etc/containerd
 containerd config default | sudo tee /etc/containerd/config.toml
 
-# Set the cgroup driver to systemd
+# Use systemd cgroups for kubelet compatibility
 sudo sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 
-# Restart containerd to apply the new config
 sudo systemctl restart containerd
 ```
 
-### 6.2. Disable Swap
+### Disable Swap
 
-Kubernetes requires that you disable swap memory on all nodes.
-
-**Bash**
-
-```
+```bash
 sudo swapoff -a
-# (Optional but recommended) To make this permanent, comment out the swap line in /etc/fstab
+# persist across reboots
 sudo sed -i '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
 ```
 
-### 6.3. Install Kubernetes Packages (`kubeadm`, `kubelet`, `kubectl`)
+### Install Kubernetes (`kubeadm`, `kubelet`, `kubectl`)
 
-This uses the modern, recommended method for adding the Kubernetes package repositories.
-
-**Bash**
-
-```
-# Install prerequisite packages
+```bash
 sudo apt-get update
 sudo apt-get install -y apt-transport-https ca-certificates curl gpg
 
-# Add Kubernetes GPG key
 sudo mkdir -p /etc/apt/keyrings
-curl -fsSL [https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key](https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key) | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key \
+  | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
 
-# Add the Kubernetes repository
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] [https://pkgs.k8s.io/core:/stable:/v1.30/deb/](https://pkgs.k8s.io/core:/stable:/v1.30/deb/) /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' \
+  | sudo tee /etc/apt/sources.list.d/kubernetes.list
 
-# Install the tools
 sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
 ```
 
-### 7. Initialize the Control Plane (Run Only on Master Node)
+### Initialize the Control Plane (Run on Master Only)
 
-This command bootstraps the cluster. The `--pod-network-cidr` is required for our network plugin (Calico).
-
-**Bash**
-
-```
+```bash
 sudo kubeadm init --pod-network-cidr=192.168.0.0/16
 ```
 
-After this command succeeds, it will print a `kubeadm join` command. **Copy it and save it somewhere safe.**
+Save the `kubeadm join ...` command printed at the end.
 
-### 8. Configure `kubectl` (Run Only on Master Node)
+### Configure `kubectl` on Master
 
-This allows you to manage the cluster as a regular user.
-
-**Bash**
-
-```
+```bash
 mkdir -p $HOME/.kube
 sudo cp /etc/kubernetes/admin.conf $HOME/.kube/config
 sudo chown $(id -u):$(id -g) $HOME/.kube/config
 ```
 
-### 9. Install the Network Plugin (Run Only on Master Node)
+### Install the Network Plugin (Calico) on Master
 
-This installs Calico, allowing your pods and nodes to communicate.
-
-**Bash**
-
-```
-kubectl apply -f [https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml](https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml)
+```bash
+kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.28.0/manifests/calico.yaml
 ```
 
-### 10. Join Worker Nodes to the Cluster
+### Join Workers to the Cluster
 
-For each worker node (`workernode-0` and `workernode-1`), run the `kubeadm join` command you saved from Step 7. Remember to run it with `sudo`.
+Run the saved join command on each worker:
 
-**Bash**
-
-```
-# (Run this on each worker node)
+```bash
 sudo kubeadm join 10.240.0.11:6443 --token <token> --discovery-token-ca-cert-hash sha256:<hash>
 ```
 
-### 11. Verify the Cluster Status (Run on Master Node)
+### Verify Cluster Status (on Master)
 
-Check that all nodes have joined and are in the `Ready` state. It may take a minute or two for the worker nodes to become ready after joining.
-
-**Bash**
-
-```
+```bash
 kubectl get nodes -w
 ```
 
-You should see all three nodes listed with a `STATUS` of `Ready`. Your cluster is now fully operational.
+You should see all three nodes become `Ready`.
 
 # Section 25 - Troubleshoot Self Managed K8s Cluster
 
-### Troubleshooting K8s Clusters
+### Troubleshooting the Control Plane
 
-* If Kube API Server is down, user won't be able to use Kubectl to Interact with Cluster.
-* User may get the error message look like -
-* "The connection to the server localhost:6443 was refused - did you specify the right host and port?"
-* Possible Fixes : Make Sure Docker and Kubelet services are up and running on your master node(s).
-* ```
-  kubectl get nodes
-  sudo systemctl status docker
-  kubectl dedscribe node <node-name>
-  sudo systemctl status kubelet
-  sudo systemctl start kubelet
-  sudo systemctl enable kubelet
-  kubectl get pods -n kube-system
-  kubectl describe pod podname -n kube-system
-
+* If the API server is down, `kubectl` will fail with:
   ```
+  The connection to the server localhost:6443 was refused - did you specify the right host and port?
+  ```
+* First checks (on the control plane):
 
+```bash
+kubectl get nodes
+sudo systemctl status kubelet
+sudo systemctl start kubelet
+sudo systemctl enable kubelet
+kubectl get pods -n kube-system
+kubectl describe node <node-name>
+kubectl describe pod <pod-name> -n kube-system
+```
+
+> If you used `containerd`, there is no Docker daemon to check. If your setup did use Docker, then: `sudo systemctl status docker`.
 
 ### Cluster and Node Logs
 
-```
-sudo journalctl -u kubectl
-sudo journalctl -u kubectl -n 100
-sudo journalctl -u kubelet -f (in worker node)
+```bash
+# kubelet service logs
+sudo journalctl -u kubelet
+sudo journalctl -u kubelet -n 100
+sudo journalctl -u kubelet -f    # follow on a worker
+
+# control-plane static pod logs (names vary)
 kubectl logs etcd-master-node -n kube-system
 ```
 
+### Troubleshoot Applications
 
-### Troubleshoot Applications in K8s
+* Run commands inside containers:
+  ```bash
+  kubectl exec <pod-name> -c <container-name> -- <command>
+  ```
+* `kubectl exec` can only run binaries that exist in the container image.
 
-* kubectl exec `<pod-name>` -c `<container-name>` -- command
-* Kubectl exec is not used to execute Software in container that is not present in container.
+Sample deployment and exec:
 
-vi deployment.yml
-
-```
+```yaml
+# deployment.yml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -2943,31 +2894,203 @@ spec:
         app: chef-server
     spec:
       containers:
-        # This container uses a known-good public image
         - name: nginx-server
           image: "nginx:latest"
           ports:
             - containerPort: 80
           command: ["/bin/sh"]
           args: ["-c", "echo Hello from the Nginx container; sleep 3600"]
-        # This container does not need to expose a port
         - name: ubuntu
           image: "ubuntu:18.04"
           command: ["/bin/sh"]
           args: ["-c", "echo Hello from the Ubuntu container; sleep 3600"]
 ```
 
+```bash
 kubectl apply -f deployment.yml
 
-kubectl exec chef-server-dbc4669b7-6gxgw  -c ubuntu -- ls
+# Replace the pod name with an actual pod name from `kubectl get pods`
+kubectl exec chef-server-dbc4669b7-6gxgw -c ubuntu -- ls
+kubectl exec -it chef-server-dbc4669b7-6gxgw -c nginx-server -- ls
+kubectl exec -it chef-server-dbc4669b7-6gxgw -c nginx-server -- /bin/bash
+```
 
-kubectl exec -it chef-server-dbc4669b7-6gxgw  -c nginx-server -- ls
+### Container Logs
 
-kubectl exec -it chef-server-dbc4669b7-6gxgw  -c nginx-server -- /bin/bash
-
-
-### Container Logs in K8s
-
+```bash
 kubectl logs chef-server-dbc4669b7-6gxgw -c ubuntu
+kubectl logs chef-server-dbc4669b7-6gxgw -c nginx-server
+```
 
-kubectl logs chef-server-dbc4669b7-6gxgw -cnginx-server
+# Section 26 - Package & Deploy on Kubernetes — HELM
+
+### Introduction
+
+* Helm is the package manager for Kubernetes. It installs and manages **charts** (preconfigured bundles of Kubernetes resources).
+* Charts are templatized; **values** provide environment-specific configuration.
+* A **release** is a deployed instance of a chart.
+
+### Helm CLI (v3) and Tiller (historical)
+
+* **Helm v3** is client-only; no server component.
+* **Tiller** existed in Helm v2 as a server in `kube-system`. It’s retired; keep in mind only for legacy docs.
+
+### Helm Charts and Structure
+
+* A chart is a directory with:
+  * `Chart.yaml` — metadata
+  * `values.yaml` — default config values
+  * `templates/` — YAML templates rendered into Kubernetes manifests
+  * optional `charts/` — dependencies (subcharts)
+* Repositories host and distribute charts.
+
+### Install Helm (v3)
+
+```bash
+# Download installer
+curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+chmod 700 get_helm.sh
+./get_helm.sh
+```
+
+Add a popular repo and refresh:
+
+```bash
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+```
+
+### Essential Helm Commands
+
+#### Search for a Chart
+
+```bash
+helm search repo mysql
+```
+
+#### Install a Chart
+
+```bash
+helm install my-database bitnami/mysql
+```
+
+#### List Releases
+
+```bash
+helm list
+# across all namespaces
+helm list --all-namespaces
+```
+
+#### Status of a Release
+
+```bash
+helm status my-database
+```
+
+#### Upgrade a Release
+
+```bash
+helm upgrade my-database bitnami/mysql
+```
+
+#### Uninstall a Release
+
+```bash
+helm uninstall my-database
+```
+
+#### Check Helm Version
+
+```bash
+helm version
+```
+
+### Create and Deploy a Helm Chart
+
+#### Create a New Chart
+
+```bash
+helm create <chart-name>
+```
+
+Key files:
+
+* `Chart.yaml` — metadata
+* `values.yaml` — default values
+* `templates/` — manifest templates
+* `charts/` — optional dependencies
+
+#### Lint, Template, Install
+
+```bash
+# Validate chart structure
+helm lint <chart-full-path>
+
+# Render templates locally
+helm template <chart-full-path>
+
+# Install to cluster
+helm install <release-name> <chart-full-path>
+```
+
+#### Upgrade, Roll Back, Uninstall
+
+```bash
+helm upgrade <release-name> <chart-full-path>
+helm rollback <release-name> <revision-number>
+helm uninstall <release-name>
+```
+
+### Upload Helm Chart to S3 (Private Repo)
+
+Use the `helm-s3` plugin to treat an S3 bucket as a Helm repository.
+
+#### Prerequisites
+
+* Helm v3
+* AWS CLI configured (`aws sts get-caller-identity` should succeed)
+
+```bash
+aws sts get-caller-identity
+```
+
+#### Initialize the S3 Repository
+
+```bash
+# Create a globally unique bucket (choose your own name)
+aws s3api create-bucket \
+  --bucket your-unique-helm-chart-bucket-name \
+  --region ap-south-1 \
+  --create-bucket-configuration LocationConstraint=ap-south-1
+
+# Install the plugin
+helm plugin install https://github.com/hypnoglow/helm-s3.git
+
+# Initialize the repo path in S3
+helm s3 init s3://your-unique-helm-chart-bucket-name/charts
+
+# Add the repo locally
+helm repo add s3-charts s3://your-unique-helm-chart-bucket-name/charts
+```
+
+#### Package and Push Your Chart
+
+```bash
+# From the parent directory of your chart folder
+helm package hello-world
+
+# Push the .tgz to S3
+helm s3 push ./hello-world-0.1.0.tgz s3-charts
+```
+
+#### Verify and Install from S3
+
+```bash
+helm repo update
+helm search repo s3-charts
+helm install my-release s3-charts/hello-world
+```
+
+> Result: your application is installed from a private S3-backed Helm repository.
+>
